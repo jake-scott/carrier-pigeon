@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Carrier Pigeon</string>
+    <string name="widget_name">Data SIM</string>
+    <string name="widget_description">Shows which SIM is carrying mobile data right now</string>
+</resources>
