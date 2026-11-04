@@ -17,6 +17,8 @@ This build is a spike to confirm, on a real phone, that every automatic data SIM
 | --- | --- |
 | `ConnectivityManager.registerNetworkCallback(request, PendingIntent)` | The system wakes the app whenever a cellular internet network comes up, even if the app isn't running. No polling, no background service. |
 | `TelephonyCallback.ActiveDataSubscriptionIdListener` | Instant updates while the app's process is alive (Android 12+). |
+| `SubscriptionManager.OnSubscriptionsChangedListener` | While the process is alive: an eSIM enabled, disabled or renamed. |
+| `CARRIER_CONFIG_CHANGED` and default-data broadcasts | Manifest receiver, even when the app isn't running: an eSIM enabled or disabled, default data SIM changed. |
 | Boot / app update receiver, widget refresh every 30 min, widget tap | Safety nets. |
 
 Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiveDataSubscriptionId()`, writes the result to DataStore and redraws the widget. The widget itself only reads stored state.
@@ -27,7 +29,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 2. Open the app and allow phone access.
 3. Add the "Data SIM" widget to your home screen.
 4. Use the phone normally for a day, ideally somewhere coverage changes, or force a switch by making a call on the non-data SIM.
-5. Open the app and tap **Share log**. Lines marked `SWITCH` are switches; `reason=` shows which path reported it, and `network=` cross-checks the sub behind the cellular network.
+5. Open the app and tap **Share log**. Lines marked `SWITCH` are switches and `NOTE` lines record process starts and listener registration; `reason=` shows which path reported it, and `network=` cross-checks the sub behind the cellular network.
 
 ## Building
 

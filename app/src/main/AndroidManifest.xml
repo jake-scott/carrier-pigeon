@@ -34,6 +34,16 @@
             android:exported="false" />
 
         <receiver
+            android:name=".data.SimEventReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telephony.action.CARRIER_CONFIG_CHANGED" />
+                <action android:name="android.intent.action.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED" />
+                <action android:name="android.telephony.action.DEFAULT_SUBSCRIPTION_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".data.BootReceiver"
             android:exported="false">
             <intent-filter>

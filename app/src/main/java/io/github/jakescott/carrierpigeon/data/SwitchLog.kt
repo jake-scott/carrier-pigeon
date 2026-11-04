@@ -29,6 +29,17 @@ class SwitchLog(context: Context) {
             new.networkType?.let { append(" type=").append(it) }
             if (switched) append(" from=").append(old!!.activeSubId)
         }
+        write(line)
+    }
+
+    /** A diagnostic line (registration results, process starts) so the spike log explains gaps. */
+    fun note(text: String) {
+        val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+        write("$time   NOTE $text")
+    }
+
+    @Synchronized
+    private fun write(line: String) {
         val lines = (readLines() + line).takeLast(MAX_LINES)
         file.writeText(lines.joinToString("\n", postfix = "\n"))
     }

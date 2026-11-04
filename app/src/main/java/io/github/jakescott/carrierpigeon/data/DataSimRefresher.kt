@@ -20,6 +20,8 @@ object DataSimRefresher {
         networkSubId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
     ) = withContext(Dispatchers.IO) {
         val app = context.applicationContext
+        // Retry any in-process listener that failed earlier, e.g. before the permission was granted.
+        withContext(Dispatchers.Main) { DataSimMonitor.registerInProcessListeners(app) }
         mutex.withLock {
             val store = StateStore(app)
             val old = store.current()
