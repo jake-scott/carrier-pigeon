@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         val app = applicationContext
-        lifecycleScope.launch { DataSimRefresher.refresh(app, "app-opened") }
+        lifecycleScope.launch { DataSimRefresher.refresh(app, "app-opened", settle = false) }
     }
 }
 
@@ -96,7 +96,7 @@ private fun MainScreen() {
     var logVersion by remember { mutableIntStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
-        scope.launch { DataSimRefresher.refresh(app, "permission-result") }
+        scope.launch { DataSimRefresher.refresh(app, "permission-result", settle = false) }
     }
 
     LaunchedEffect(state, logVersion) {
@@ -137,7 +137,7 @@ private fun MainScreen() {
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { scope.launch { DataSimRefresher.refresh(app, "manual") } }) { Text("Refresh") }
+                    Button(onClick = { scope.launch { DataSimRefresher.refresh(app, "manual", settle = false) } }) { Text("Refresh") }
                     OutlinedButton(onClick = {
                         val text = log.readLines().joinToString("\n")
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain")

@@ -69,13 +69,25 @@ class DataSimResolver(private val context: Context) {
             when (telephonyManager.createForSubscriptionId(subId).dataNetworkType) {
                 TelephonyManager.NETWORK_TYPE_NR -> "5G"
                 TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
+                TelephonyManager.NETWORK_TYPE_IWLAN -> "Wi-Fi"
                 TelephonyManager.NETWORK_TYPE_HSPAP,
                 TelephonyManager.NETWORK_TYPE_HSPA,
                 TelephonyManager.NETWORK_TYPE_HSDPA,
                 TelephonyManager.NETWORK_TYPE_HSUPA,
-                TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
-                TelephonyManager.NETWORK_TYPE_UNKNOWN -> null
-                else -> "2G"
+                TelephonyManager.NETWORK_TYPE_UMTS,
+                TelephonyManager.NETWORK_TYPE_TD_SCDMA,
+                TelephonyManager.NETWORK_TYPE_EVDO_0,
+                TelephonyManager.NETWORK_TYPE_EVDO_A,
+                TelephonyManager.NETWORK_TYPE_EVDO_B,
+                TelephonyManager.NETWORK_TYPE_EHRPD -> "3G"
+                TelephonyManager.NETWORK_TYPE_GSM,
+                TelephonyManager.NETWORK_TYPE_GPRS,
+                TelephonyManager.NETWORK_TYPE_EDGE,
+                TelephonyManager.NETWORK_TYPE_CDMA,
+                TelephonyManager.NETWORK_TYPE_1xRTT,
+                TelephonyManager.NETWORK_TYPE_IDEN -> "2G"
+                // Unknown, or mid-switch: show nothing rather than a misleading generation.
+                else -> null
             }
         } catch (e: SecurityException) {
             null

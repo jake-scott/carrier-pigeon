@@ -31,6 +31,7 @@ object DataSimMonitor {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var telephonyCallback: Any? = null
+    private var telephonyFailureLogged = false
     private var subscriptionsListener: SubscriptionManager.OnSubscriptionsChangedListener? = null
     private var runtimeReceiver: BroadcastReceiver? = null
 
@@ -86,7 +87,11 @@ object DataSimMonitor {
             SwitchLog(app).note("telephony callback registered")
         } catch (e: RuntimeException) {
             Log.w(TAG, "registerTelephonyCallback failed", e)
-            SwitchLog(app).note("telephony callback registration failed: ${e.javaClass.simpleName}: ${e.message}")
+            // Expected until READ_PHONE_STATE is granted; log it once per process, not on every retry.
+            if (!telephonyFailureLogged) {
+                telephonyFailureLogged = true
+                SwitchLog(app).note("telephony callback registration failed: ${e.javaClass.simpleName}: ${e.message}")
+            }
         }
     }
 

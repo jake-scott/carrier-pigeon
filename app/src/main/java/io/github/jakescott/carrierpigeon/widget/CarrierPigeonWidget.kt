@@ -105,6 +105,6 @@ private fun detailLine(s: DataSimState): String = listOfNotNull(
 /** Tapping the widget re-reads the data SIM, so the user can always force it to be current. */
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        DataSimRefresher.refresh(context, "widget-tap")
+        DataSimRefresher.refresh(context, "widget-tap", settle = false)
     }
 }
