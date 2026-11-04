@@ -3,6 +3,14 @@ package io.github.jakescott.carrierpigeon.data
 
 import android.telephony.SubscriptionManager
 
+/** Whether mobile data can actually flow on the data SIM right now. */
+enum class DataStatus(val text: String?) {
+    OK(null),
+    AIRPLANE_MODE("Airplane mode"),
+    DATA_OFF("Mobile data off"),
+    NO_SERVICE("No service"),
+}
+
 /** Snapshot of which SIM is carrying mobile data. */
 data class DataSimState(
     /** Sub currently providing cellular internet (follows automatic switching). */
@@ -21,6 +29,7 @@ data class DataSimState(
     val iconTint: Int,
     /** e.g. "5G", "LTE"; null if unknown. */
     val networkType: String?,
+    val status: DataStatus,
     val updatedAtMillis: Long,
 ) {
     val hasActiveSub: Boolean get() = activeSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID

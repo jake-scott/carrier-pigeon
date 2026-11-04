@@ -19,6 +19,7 @@ class SimEventReceiver : BroadcastReceiver() {
         val reason = when (intent.action) {
             CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED -> "carrier-config-changed"
             in DataSimMonitor.DEFAULT_DATA_ACTIONS -> "default-data-broadcast"
+            DataSimMonitor.AIRPLANE_ACTION -> "airplane-mode"
             else -> return
         }
         val pending = goAsync()

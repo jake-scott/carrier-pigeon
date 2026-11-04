@@ -19,6 +19,7 @@ This build is a spike to confirm, on a real phone, that every automatic data SIM
 | `TelephonyCallback.ActiveDataSubscriptionIdListener` | Instant updates while the app's process is alive (Android 12+). |
 | `SubscriptionManager.OnSubscriptionsChangedListener` | While the process is alive: an eSIM enabled, disabled or renamed. |
 | `CARRIER_CONFIG_CHANGED` and default-data broadcasts | Manifest receiver, even when the app isn't running: an eSIM enabled or disabled, default data SIM changed. |
+| Airplane mode broadcast, service-state and mobile-data listeners | Show "Airplane mode", "Mobile data off" or "No service" instead of a SIM that can't carry data. |
 | Boot / app update receiver, widget refresh every 30 min, widget tap | Safety nets. |
 
 Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiveDataSubscriptionId()`, writes the result to DataStore and redraws the widget. The widget itself only reads stored state.

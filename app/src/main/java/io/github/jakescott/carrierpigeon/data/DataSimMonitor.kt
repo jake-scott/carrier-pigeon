@@ -10,6 +10,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.telephony.ServiceState
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
@@ -24,6 +25,8 @@ object DataSimMonitor {
     private const val TAG = "DataSimMonitor"
 
     /** Broadcasts sent when the default data SIM changes. Not all are public API, so we match by string. */
+    val AIRPLANE_ACTION: String = Intent.ACTION_AIRPLANE_MODE_CHANGED
+
     val DEFAULT_DATA_ACTIONS = listOf(
         "android.intent.action.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED",
         SubscriptionManager.ACTION_DEFAULT_SUBSCRIPTION_CHANGED,
@@ -76,9 +79,20 @@ object DataSimMonitor {
     private fun registerTelephonyCallback(app: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || telephonyCallback != null) return
         val tm = app.getSystemService(TelephonyManager::class.java)
-        val callback = object : TelephonyCallback(), TelephonyCallback.ActiveDataSubscriptionIdListener {
+        val callback = object : TelephonyCallback(),
+            TelephonyCallback.ActiveDataSubscriptionIdListener,
+            TelephonyCallback.ServiceStateListener,
+            TelephonyCallback.UserMobileDataStateListener {
             override fun onActiveDataSubscriptionIdChanged(subId: Int) {
                 scope.launch { DataSimRefresher.refresh(app, "telephony-callback") }
+            }
+
+            override fun onServiceStateChanged(serviceState: ServiceState) {
+                scope.launch { DataSimRefresher.refresh(app, "service-state") }
+            }
+
+            override fun onUserMobileDataStateChanged(enabled: Boolean) {
+                scope.launch { DataSimRefresher.refresh(app, "mobile-data-toggled") }
             }
         }
         try {
@@ -116,10 +130,14 @@ object DataSimMonitor {
         if (runtimeReceiver != null) return
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                scope.launch { DataSimRefresher.refresh(app, "default-data-broadcast") }
+                val reason = if (intent.action == AIRPLANE_ACTION) "airplane-mode" else "default-data-broadcast"
+                scope.launch { DataSimRefresher.refresh(app, reason) }
             }
         }
-        val filter = IntentFilter().apply { DEFAULT_DATA_ACTIONS.forEach { addAction(it) } }
+        val filter = IntentFilter().apply {
+            DEFAULT_DATA_ACTIONS.forEach { addAction(it) }
+            addAction(AIRPLANE_ACTION)
+        }
         // System broadcasts need RECEIVER_EXPORTED (flag added in API 33, required when targeting 34+).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             app.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)

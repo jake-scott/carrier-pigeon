@@ -35,6 +35,7 @@ class StateStore(context: Context) {
             p[EMBEDDED] = s.isEmbedded
             p[TINT] = s.iconTint
             if (s.networkType != null) p[NETWORK_TYPE] = s.networkType else p.remove(NETWORK_TYPE)
+            p[STATUS] = s.status.name
             p[UPDATED] = s.updatedAtMillis
         }
     }
@@ -51,6 +52,7 @@ class StateStore(context: Context) {
             isEmbedded = this[EMBEDDED] ?: false,
             iconTint = this[TINT] ?: 0,
             networkType = this[NETWORK_TYPE],
+            status = this[STATUS]?.let { name -> DataStatus.entries.firstOrNull { it.name == name } } ?: DataStatus.OK,
             updatedAtMillis = updated,
         )
     }
@@ -65,6 +67,7 @@ class StateStore(context: Context) {
         val EMBEDDED = booleanPreferencesKey("embedded")
         val TINT = intPreferencesKey("tint")
         val NETWORK_TYPE = stringPreferencesKey("network_type")
+        val STATUS = stringPreferencesKey("status")
         val UPDATED = longPreferencesKey("updated_at")
     }
 }

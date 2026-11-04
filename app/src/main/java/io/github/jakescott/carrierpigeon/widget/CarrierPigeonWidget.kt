@@ -36,6 +36,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import io.github.jakescott.carrierpigeon.data.DataSimRefresher
 import io.github.jakescott.carrierpigeon.data.DataSimState
+import io.github.jakescott.carrierpigeon.data.DataStatus
 import io.github.jakescott.carrierpigeon.data.StateStore
 
 /** Home-screen widget. Only reads stored state; never calls telephony APIs itself. */
@@ -58,7 +59,13 @@ class CarrierPigeonWidget : GlanceAppWidget() {
 @Composable
 private fun WidgetContent(state: DataSimState?) {
     val compact = LocalSize.current.width < 110.dp
-    val dotColor = state?.iconTint?.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF3D5AFE)
+    val blocked = state?.status?.text
+    // Grey dot when data can't flow, so the SIM colour never suggests data is live.
+    val dotColor = if (blocked != null) {
+        Color(0xFF9E9E9E)
+    } else {
+        state?.iconTint?.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF3D5AFE)
+    }
 
     Box(
         modifier = GlanceModifier
@@ -76,7 +83,7 @@ private fun WidgetContent(state: DataSimState?) {
             Spacer(GlanceModifier.width(8.dp))
             Column {
                 Text(
-                    text = state?.label ?: "Tap to load",
+                    text = blocked ?: state?.label ?: "Tap to load",
                     maxLines = 1,
                     style = TextStyle(
                         color = GlanceTheme.colors.onSurface,
@@ -96,7 +103,13 @@ private fun WidgetContent(state: DataSimState?) {
     }
 }
 
-private fun detailLine(s: DataSimState): String = listOfNotNull(
+private fun detailLine(s: DataSimState): String {
+    // When data is blocked the main line says why; name the data SIM on the detail line instead.
+    if (s.status != DataStatus.OK) return "Data SIM: ${s.label}"
+    return activeDetail(s)
+}
+
+private fun activeDetail(s: DataSimState): String = listOfNotNull(
     s.carrierName?.takeIf { it.isNotBlank() && it != s.displayName },
     s.networkType,
     if (s.isTemporarySwitch) "temporary" else null,

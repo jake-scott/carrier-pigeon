@@ -8,6 +8,8 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.TelephonyNetworkSpecifier
+import android.provider.Settings
+import android.telephony.ServiceState
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
@@ -38,8 +40,35 @@ class DataSimResolver(private val context: Context) {
             isEmbedded = info?.isEmbedded ?: false,
             iconTint = info?.iconTint ?: 0,
             networkType = networkType(active),
+            status = status(active),
             updatedAtMillis = System.currentTimeMillis(),
         )
+    }
+
+    /**
+     * Android keeps reporting a data SIM in airplane mode or with mobile data off, so check separately
+     * whether data can actually flow. Checks that need READ_PHONE_STATE are skipped without it.
+     */
+    private fun status(subId: Int): DataStatus {
+        if (Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) == 1) {
+            return DataStatus.AIRPLANE_MODE
+        }
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID || !hasPhoneStatePermission()) return DataStatus.OK
+        val tm = telephonyManager.createForSubscriptionId(subId)
+        try {
+            if (!tm.isDataEnabled) return DataStatus.DATA_OFF
+        } catch (e: SecurityException) {
+            // Fall through: unknown is treated as on.
+        }
+        try {
+            val state = tm.serviceState?.state
+            if (state == ServiceState.STATE_OUT_OF_SERVICE || state == ServiceState.STATE_POWER_OFF) {
+                return DataStatus.NO_SERVICE
+            }
+        } catch (e: SecurityException) {
+            // Some builds also want location for getServiceState(); skip the check.
+        }
+        return DataStatus.OK
     }
 
     /** All active SIMs, for the app screen. Empty without READ_PHONE_STATE. */
