@@ -59,12 +59,11 @@ class CarrierPigeonWidget : GlanceAppWidget() {
 @Composable
 private fun WidgetContent(state: DataSimState?) {
     val compact = LocalSize.current.width < 110.dp
-    val blocked = state?.status?.text
-    // Grey dot when data can't flow, so the SIM colour never suggests data is live.
-    val dotColor = if (blocked != null) {
+    // Grey dot when the data SIM can't carry data (airplane mode, data off, no service).
+    val dotColor = if (state == null || state.status != DataStatus.OK) {
         Color(0xFF9E9E9E)
     } else {
-        state?.iconTint?.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF3D5AFE)
+        state.iconTint.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF3D5AFE)
     }
 
     Box(
@@ -82,18 +81,29 @@ private fun WidgetContent(state: DataSimState?) {
             ) {}
             Spacer(GlanceModifier.width(8.dp))
             Column {
-                Text(
-                    text = blocked ?: state?.label ?: "Tap to load",
-                    maxLines = 1,
-                    style = TextStyle(
-                        color = GlanceTheme.colors.onSurface,
-                        fontSize = if (compact) 14.sp else 16.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                )
-                if (!compact && state != null) {
+                // Top line: the carrier carrying data, marked as the default data SIM or a backup.
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = detailLine(state),
+                        text = state?.label ?: "Tap to load",
+                        maxLines = 1,
+                        style = TextStyle(
+                            color = GlanceTheme.colors.onSurface,
+                            fontSize = if (compact) 14.sp else 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                    )
+                    marker(state, compact)?.let { m ->
+                        Text(
+                            text = m,
+                            maxLines = 1,
+                            style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp),
+                        )
+                    }
+                }
+                // Bottom line: how the device is reaching the internet right now.
+                if (state != null) {
+                    Text(
+                        text = state.accessLine,
                         maxLines = 1,
                         style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp),
                     )
@@ -103,17 +113,14 @@ private fun WidgetContent(state: DataSimState?) {
     }
 }
 
-private fun detailLine(s: DataSimState): String {
-    // When data is blocked the main line says why; name the data SIM on the detail line instead.
-    if (s.status != DataStatus.OK) return "Data SIM: ${s.label}"
-    return activeDetail(s)
+/** "default" when data is on the SIM chosen in Settings, "backup" when the phone has moved it to another SIM. */
+private fun marker(s: DataSimState?, compact: Boolean): String? {
+    if (s == null || !s.hasActiveSub || s.defaultSubId < 0) return null
+    return when {
+        s.isTemporarySwitch -> if (compact) " ⇄" else "  backup"
+        else -> if (compact) " ★" else "  default"
+    }
 }
-
-private fun activeDetail(s: DataSimState): String = listOfNotNull(
-    s.carrierName?.takeIf { it.isNotBlank() && it != s.displayName },
-    s.networkType,
-    if (s.isTemporarySwitch) "temporary" else null,
-).joinToString(" · ").ifEmpty { if (s.isEmbedded) "eSIM" else "SIM" }
 
 /** Tapping the widget re-reads the data SIM, so the user can always force it to be current. */
 class RefreshAction : ActionCallback {

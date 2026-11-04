@@ -30,6 +30,10 @@ data class DataSimState(
     /** e.g. "5G", "LTE"; null if unknown. */
     val networkType: String?,
     val status: DataStatus,
+    /** How the device is reaching the internet right now: "Wi-Fi", "5G", "LTE", "No data", ... */
+    val access: String,
+    /** True when the default route goes over a VPN. */
+    val vpn: Boolean,
     val updatedAtMillis: Long,
 ) {
     val hasActiveSub: Boolean get() = activeSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID
@@ -40,6 +44,9 @@ data class DataSimState(
             defaultSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID &&
             activeSubId != defaultSubId
 
+    /** Bottom line of the widget, e.g. "Wi-Fi + VPN". */
+    val accessLine: String get() = if (vpn) "$access + VPN" else access
+
     /** Best short label for the widget. */
     val label: String
         get() {
@@ -47,6 +54,7 @@ data class DataSimState(
             return when {
                 !hasActiveSub -> "No data SIM"
                 !name.isNullOrBlank() -> name
+                !carrierName.isNullOrBlank() -> carrierName
                 slotIndex >= 0 -> "SIM ${slotIndex + 1}"
                 else -> "SIM #$activeSubId"
             }

@@ -36,6 +36,8 @@ class StateStore(context: Context) {
             p[TINT] = s.iconTint
             if (s.networkType != null) p[NETWORK_TYPE] = s.networkType else p.remove(NETWORK_TYPE)
             p[STATUS] = s.status.name
+            p[ACCESS] = s.access
+            p[VPN] = s.vpn
             p[UPDATED] = s.updatedAtMillis
         }
     }
@@ -53,6 +55,8 @@ class StateStore(context: Context) {
             iconTint = this[TINT] ?: 0,
             networkType = this[NETWORK_TYPE],
             status = this[STATUS]?.let { name -> DataStatus.entries.firstOrNull { it.name == name } } ?: DataStatus.OK,
+            access = this[ACCESS] ?: DataSimResolver.NO_DATA,
+            vpn = this[VPN] ?: false,
             updatedAtMillis = updated,
         )
     }
@@ -68,6 +72,8 @@ class StateStore(context: Context) {
         val TINT = intPreferencesKey("tint")
         val NETWORK_TYPE = stringPreferencesKey("network_type")
         val STATUS = stringPreferencesKey("status")
+        val ACCESS = stringPreferencesKey("access")
+        val VPN = booleanPreferencesKey("vpn")
         val UPDATED = longPreferencesKey("updated_at")
     }
 }

@@ -67,8 +67,8 @@ object DataSimRefresher {
             val store = StateStore(app)
             val old = store.current()
             val new = DataSimResolver(app).resolve(networkSubId).keepKnownDetails(old)
-            SwitchLog(app).append(reason, old, new)
             val changed = old == null || old.withoutVolatile() != new.withoutVolatile()
+            if (changed || !reason.isOnlyNoisy()) SwitchLog(app).append(reason, old, new)
             if (changed) store.save(new)
             changed
         }
@@ -88,6 +88,10 @@ object DataSimRefresher {
         } else {
             this
         }
+
+    private fun String.isOnlyNoisy() = split("+").all {
+        it == DataSimMonitor.DEFAULT_NETWORK_REASON || it == DataSimMonitor.SERVICE_STATE_REASON
+    }
 
     private fun DataSimState.withoutVolatile() = copy(networkSubId = -1, updatedAtMillis = 0)
 }

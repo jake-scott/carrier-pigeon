@@ -170,9 +170,10 @@ private fun CurrentSimCard(state: DataSimState?) {
             state?.status?.text?.let { Text("$it: no mobile data right now", color = MaterialTheme.colorScheme.error) }
             if (state != null) {
                 Text("Active sub ${state.activeSubId} · default sub ${state.defaultSubId} · network sub ${state.networkSubId}")
+                Text("Internet via: ${state.accessLine}")
+                Text(if (state.isTemporarySwitch) "Backup SIM (not your default data SIM)" else "Your default data SIM")
                 state.carrierName?.let { Text("Carrier: $it") }
                 state.networkType?.let { Text("Network: $it") }
-                if (state.isTemporarySwitch) Text("Temporarily switched away from your default data SIM")
             }
         }
     }

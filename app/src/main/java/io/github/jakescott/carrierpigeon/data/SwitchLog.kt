@@ -27,6 +27,7 @@ class SwitchLog(context: Context) {
             append(" network=").append(new.networkSubId)
             append(" name=\"").append(new.label).append('"')
             new.networkType?.let { append(" type=").append(it) }
+            append(" access=\"").append(new.accessLine).append('"')
             if (new.status != DataStatus.OK) append(" status=").append(new.status.name)
             if (switched) append(" from=").append(old!!.activeSubId)
         }

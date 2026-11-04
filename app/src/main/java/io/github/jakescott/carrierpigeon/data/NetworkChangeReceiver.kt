@@ -19,10 +19,16 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 val networkSubId = DataSimResolver.subIdForNetwork(context, network)
-                DataSimRefresher.refresh(context, "network-callback", networkSubId)
+                val reason = if (intent.action == ACTION_ANY) "any-network-callback" else "network-callback"
+                DataSimRefresher.refresh(context, reason, networkSubId)
             } finally {
                 pending.finish()
             }
         }
+    }
+
+    companion object {
+        const val ACTION_CELLULAR = "io.github.jakescott.carrierpigeon.NETWORK_CELLULAR"
+        const val ACTION_ANY = "io.github.jakescott.carrierpigeon.NETWORK_ANY"
     }
 }

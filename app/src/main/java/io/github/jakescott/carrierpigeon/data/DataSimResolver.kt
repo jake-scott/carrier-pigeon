@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.TelephonyNetworkSpecifier
 import android.provider.Settings
 import android.telephony.ServiceState
@@ -30,6 +31,8 @@ class DataSimResolver(private val context: Context) {
         val active = SubscriptionManager.getActiveDataSubscriptionId()
         val defaultSub = SubscriptionManager.getDefaultDataSubscriptionId()
         val info = subscriptionInfo(active)
+        val cellularType = networkType(active)
+        val (access, vpn) = access(cellularType)
         return DataSimState(
             activeSubId = active,
             defaultSubId = defaultSub,
@@ -39,10 +42,51 @@ class DataSimResolver(private val context: Context) {
             slotIndex = info?.simSlotIndex ?: -1,
             isEmbedded = info?.isEmbedded ?: false,
             iconTint = info?.iconTint ?: 0,
-            networkType = networkType(active),
+            networkType = cellularType,
             status = status(active),
+            access = access,
+            vpn = vpn,
             updatedAtMillis = System.currentTimeMillis(),
         )
+    }
+
+    /**
+     * How the device is reaching the internet: the transport of the default network, looking through
+     * a VPN to the network it runs over. Needs only ACCESS_NETWORK_STATE.
+     */
+    private fun access(cellularType: String?): Pair<String, Boolean> {
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+        val network = cm.activeNetwork ?: return NO_DATA to false
+        val caps = cm.getNetworkCapabilities(network) ?: return NO_DATA to false
+        val vpn = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        // A VPN's capabilities normally carry its underlying transports too; if not, find the
+        // physical network it is likely running over.
+        val physical = if (vpn && !caps.hasPhysicalTransport()) underlyingCapabilities(cm) else caps
+        val label = when {
+            physical == null -> if (vpn) "VPN" else NO_DATA
+            physical.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            physical.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+            physical.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> cellularType ?: "Mobile data"
+            physical.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "Bluetooth"
+            physical.hasTransport(NetworkCapabilities.TRANSPORT_USB) -> "USB"
+            else -> "Connected"
+        }
+        return label to vpn
+    }
+
+    private fun NetworkCapabilities.hasPhysicalTransport() =
+        PHYSICAL_TRANSPORTS.any { hasTransport(it) }
+
+    @Suppress("DEPRECATION") // allNetworks is the only public way to list networks without a callback.
+    private fun underlyingCapabilities(cm: ConnectivityManager): NetworkCapabilities? {
+        val candidates = cm.allNetworks.mapNotNull { cm.getNetworkCapabilities(it) }.filter {
+            !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
+        return candidates.firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+            ?: candidates.firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) }
+            ?: candidates.firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) }
+            ?: candidates.firstOrNull()
     }
 
     /**
@@ -98,7 +142,6 @@ class DataSimResolver(private val context: Context) {
             when (telephonyManager.createForSubscriptionId(subId).dataNetworkType) {
                 TelephonyManager.NETWORK_TYPE_NR -> "5G"
                 TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
-                TelephonyManager.NETWORK_TYPE_IWLAN -> "Wi-Fi"
                 TelephonyManager.NETWORK_TYPE_HSPAP,
                 TelephonyManager.NETWORK_TYPE_HSPA,
                 TelephonyManager.NETWORK_TYPE_HSDPA,
@@ -125,6 +168,14 @@ class DataSimResolver(private val context: Context) {
 
     companion object {
         private const val TAG = "DataSimResolver"
+        const val NO_DATA = "No data"
+        private val PHYSICAL_TRANSPORTS = intArrayOf(
+            NetworkCapabilities.TRANSPORT_WIFI,
+            NetworkCapabilities.TRANSPORT_ETHERNET,
+            NetworkCapabilities.TRANSPORT_CELLULAR,
+            NetworkCapabilities.TRANSPORT_BLUETOOTH,
+            NetworkCapabilities.TRANSPORT_USB,
+        )
 
         /** Sub id behind a cellular [Network], used to cross-check the active-sub API during the spike. */
         fun subIdForNetwork(context: Context, network: Network?): Int {

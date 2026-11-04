@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
@@ -32,9 +33,14 @@ object DataSimMonitor {
         SubscriptionManager.ACTION_DEFAULT_SUBSCRIPTION_CHANGED,
     )
 
+    /** Fires often (e.g. Wi-Fi signal changes), so unchanged results from it aren't logged. */
+    const val DEFAULT_NETWORK_REASON = "default-network"
+    const val SERVICE_STATE_REASON = "service-state"
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var telephonyCallback: Any? = null
     private var telephonyFailureLogged = false
+    private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var subscriptionsListener: SubscriptionManager.OnSubscriptionsChangedListener? = null
     private var runtimeReceiver: BroadcastReceiver? = null
 
@@ -45,16 +51,48 @@ object DataSimMonitor {
      */
     fun registerNetworkCallback(context: Context) {
         val app = context.applicationContext
+        releaseLegacyRequest(app)
+        // Cellular internet networks: a data SIM switch brings up the other SIM's network.
+        register(
+            app,
+            NetworkChangeReceiver.ACTION_CELLULAR,
+            NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build(),
+        )
+        // Any internet network, VPNs included: Wi-Fi or a VPN coming up changes how data is reached.
+        register(
+            app,
+            NetworkChangeReceiver.ACTION_ANY,
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build(),
+        )
+    }
+
+    /** Earlier test builds registered one PendingIntent with no action; drop it. */
+    private fun releaseLegacyRequest(app: Context) {
+        val flags = PendingIntent.FLAG_NO_CREATE or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        val legacy = PendingIntent.getBroadcast(app, 0, Intent(app, NetworkChangeReceiver::class.java), flags) ?: return
+        try {
+            app.getSystemService(ConnectivityManager::class.java).releaseNetworkRequest(legacy)
+        } catch (e: RuntimeException) {
+            // Not registered any more; nothing to do.
+        }
+        legacy.cancel()
+    }
+
+    private fun register(app: Context, action: String, request: NetworkRequest) {
         val cm = app.getSystemService(ConnectivityManager::class.java)
-        val request = NetworkRequest.Builder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
         // Must be mutable: the system adds the Network to the intent's extras.
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        // The action keeps the two PendingIntents distinct, so each registration replaces only its own.
         val pendingIntent = PendingIntent.getBroadcast(
-            app, 0, Intent(app, NetworkChangeReceiver::class.java), flags,
+            app, 0, Intent(app, NetworkChangeReceiver::class.java).setAction(action), flags,
         )
         try {
             cm.registerNetworkCallback(request, pendingIntent)
@@ -73,6 +111,7 @@ object DataSimMonitor {
         val app = context.applicationContext
         registerTelephonyCallback(app)
         registerSubscriptionsListener(app)
+        registerDefaultNetworkCallback(app)
         registerRuntimeReceiver(app)
     }
 
@@ -88,7 +127,7 @@ object DataSimMonitor {
             }
 
             override fun onServiceStateChanged(serviceState: ServiceState) {
-                scope.launch { DataSimRefresher.refresh(app, "service-state") }
+                scope.launch { DataSimRefresher.refresh(app, SERVICE_STATE_REASON) }
             }
 
             override fun onUserMobileDataStateChanged(enabled: Boolean) {
@@ -106,6 +145,27 @@ object DataSimMonitor {
                 telephonyFailureLogged = true
                 SwitchLog(app).note("telephony callback registration failed: ${e.javaClass.simpleName}: ${e.message}")
             }
+        }
+    }
+
+    /** While alive, follow the default network fully: Wi-Fi lost, VPN up or down, cellular to Wi-Fi. */
+    private fun registerDefaultNetworkCallback(app: Context) {
+        if (defaultNetworkCallback != null) return
+        val cm = app.getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = changed()
+            override fun onLost(network: Network) = changed()
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = changed()
+            private fun changed() {
+                scope.launch { DataSimRefresher.refresh(app, DEFAULT_NETWORK_REASON) }
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            defaultNetworkCallback = callback
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "registerDefaultNetworkCallback failed", e)
+            SwitchLog(app).note("default network callback registration failed: ${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
