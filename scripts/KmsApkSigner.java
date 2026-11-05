@@ -1,4 +1,5 @@
-// Signs an APK with APK Signature Scheme v2 and v3, using a key in Cloud KMS
+// Signs an APK with APK Signature Scheme v3 (apksig leaves out v2 when the
+// APK's minSdk, 30, already guarantees v3 support), using a key in Cloud KMS
 // reached through Google's PKCS#11 library, and attaching our long-lived
 // certificate. Run by scripts/kms_sign.sh, as a single-file program:
 //
