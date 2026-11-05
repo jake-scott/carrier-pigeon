@@ -1,0 +1,419 @@
+name: Release
+
+# Builds Carrier Pigeon and signs it with the app's keys in Cloud KMS
+# (mobile-build-infra, build/apps.tf). docs/signing.md has the whole picture.
+#
+#   trigger                   channel  flavor  signed with           published
+#   push to main              dev      dev     dev key (APK)         run artifact, for insiders
+#   tag vX.Y.Z-rc.N           qa       prod    release key (APK),    GitHub prerelease
+#                                              play key (bundle)
+#   tag vX.Y.Z                prod     prod    same                  GitHub release; F-Droid builds the tag
+#
+# (Pushes to dev get a sideloadable debug build from build.yml, unsigned by
+# KMS.)
+#
+# Who can sign. Each key's signer account trusts exactly one value of
+#   <GitHub environment>|jake-scott/carrier-pigeon/.github/workflows/release.yml@refs/heads/main
+# so only this file, as committed on main, running in the dev, qa or prod
+# GitHub environment, can sign. An edited copy on another branch, a pull
+# request, or a dev run asking for the release key are all refused by
+# Google.
+#
+# Tags. A workflow triggered by a tag push runs the tag's copy of itself, as
+# refs/tags/..., which the keys don't trust, and which anyone could have
+# edited before tagging. So tags don't trigger this file directly: a tag
+# push runs build.yml, and when that finishes, workflow_run starts this
+# file, which GitHub always runs from main. This copy then checks that the
+# tag points at a commit already on main and that the tag matches the app's
+# versionName, before building that commit. The signing jobs take their
+# scripts and certificates from main, not from the tag.
+#
+# The jobs that hold credentials don't build: they sign what the build job
+# made, so none of Gradle's dependencies run where the credentials are. There
+# are no keystores or passwords in GitHub or on the runner.
+#
+# qa and prod are the same app and the same key: a qa build is a prerelease
+# testers update from in place. Each qa and prod run rebuilds the APK on a
+# second, fresh runner and checks the two are identical, the check F-Droid
+# makes, so a release F-Droid would reject fails here first.
+#
+# The values below are from `tofu output` in mobile-build-infra/build. They
+# aren't secrets: the Workload Identity bindings are what protect the keys.
+#
+# The first run for a key has no certificate to attach yet
+# (signing-certs/<key>.pem). That run makes it, signs with it and attaches
+# both to the run instead of publishing. Commit the certificate to main, then
+# delete and push the tag again (or push a new one).
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+
+permissions:
+  contents: read
+
+env:
+  WIF_PROVIDER: projects/26387807765/locations/global/workloadIdentityPools/github/providers/github
+  # Google's PKCS#11 library for Cloud KMS, from its GitHub release. Pinned
+  # by hash, and its signature is checked against Google's release key too.
+  KMSP11_VERSION: "1.9"
+  KMSP11_SHA256: 5397f965073cd5d1e2c43e5148f102f31a7c835902f97eb41c7c9c0f1b876a40
+  # The APK signing library (scripts/KmsApkSigner.java), from Google's Maven
+  # repository. Matches AGP in gradle/libs.versions.toml.
+  APKSIG_VERSION: 8.11.1
+  APKSIG_SHA256: c070ed1394629d74641aa0906f60b2ffa1ee77e6366a1f93437f59717b1aeb89
+
+# One release per branch or tag at a time, never cancelled half-signed.
+concurrency:
+  group: release-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Decides what this run is. Build's workflow_run fires for every Build run;
+  # only a successful one for a pushed v* tag is a release.
+  setup:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-24.04
+    outputs:
+      channel: ${{ steps.what.outputs.channel }}
+      sha: ${{ steps.what.outputs.sha }}
+      tag: ${{ steps.what.outputs.tag }}
+      version: ${{ steps.what.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: What to build
+        id: what
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          TAG_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Release runs only on main; the keys trust nothing else."
+            exit 1
+          fi
+          if [ "$EVENT" = push ]; then
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ $TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+            version=${BASH_REMATCH[1]}
+            channel=$([ -n "${BASH_REMATCH[2]}" ] && echo qa || echo prod)
+          else
+            echo "::error::$TAG isn't a release tag: use vX.Y.Z for prod or vX.Y.Z-rc.N for qa."
+            exit 1
+          fi
+          # A branch can share a tag's name; make sure this really is the tag,
+          # still pointing where Build saw it.
+          tag_sha=$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}" || true)
+          if [ "$tag_sha" != "$TAG_SHA" ]; then
+            echo "::error::Tag $TAG is at ${tag_sha:-nothing}, not $TAG_SHA as built. Was it moved or deleted?"
+            exit 1
+          fi
+          # Only release what has been merged to main.
+          if ! git merge-base --is-ancestor "$TAG_SHA" origin/main; then
+            echo "::error::$TAG (${TAG_SHA::7}) isn't on main. Tag a commit after it's merged."
+            exit 1
+          fi
+          {
+            echo "channel=$channel"
+            echo "sha=$TAG_SHA"
+            echo "tag=$TAG"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice title=Release::$TAG -> $channel"
+
+  build:
+    needs: setup
+    runs-on: ubuntu-24.04
+    env:
+      CHANNEL: ${{ needs.setup.outputs.channel }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.setup.outputs.sha }}
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      # No Gradle cache for qa and prod: release builds start clean, as
+      # F-Droid's do.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: ${{ needs.setup.outputs.channel != 'dev' }}
+
+      # dev builds have their own package, so their version codes only need
+      # to grow among themselves. qa and prod take theirs from the source.
+      - name: Build (dev)
+        if: env.CHANNEL == 'dev'
+        run: ./gradlew --no-daemon --no-build-cache assembleDevRelease -PdevVersionCode=$((GITHUB_RUN_NUMBER + 1000))
+      - name: Build (prod flavor, for qa and prod)
+        if: env.CHANNEL != 'dev'
+        run: ./gradlew --no-daemon --no-build-cache assembleProdRelease bundleProdRelease
+
+      - name: Collect the unsigned build
+        run: |
+          mkdir -p out
+          flavor=$([ "$CHANNEL" = dev ] && echo dev || echo prod)
+          cp "app/build/outputs/apk/$flavor/release/app-$flavor-release-unsigned.apk" out/
+          if [ "$CHANNEL" != dev ]; then
+            cp app/build/outputs/bundle/prodRelease/app-prod-release.aab out/
+          fi
+          sha256sum out/*
+
+      - name: Version
+        id: version
+        env:
+          TAG_VERSION: ${{ needs.setup.outputs.version }}
+          TAG: ${{ needs.setup.outputs.tag }}
+        run: |
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          version=$("$aapt2" dump badging out/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # F-Droid reads the version from the source at the tag, so the tag
+          # and versionName must agree.
+          if [ -n "$TAG" ] && [ "$version" != "$TAG_VERSION" ]; then
+            echo "::error::$TAG doesn't match versionName $version in app/build.gradle.kts."
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned
+          path: out/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  # A second build of the same commit on a fresh runner, with nothing shared
+  # with the first. verify checks the two APKs are identical.
+  rebuild:
+    needs: setup
+    if: needs.setup.outputs.channel != 'dev'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.setup.outputs.sha }}
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: true
+      - run: ./gradlew --no-daemon --no-build-cache assembleProdRelease
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rebuild
+          path: app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  # dev: the dev key. qa and prod: the release key, the one phones trust for
+  # APKs outside Play (F-Droid, GitHub releases). Scripts and certificates
+  # come from main (the default checkout), not from the tag.
+  sign-apk:
+    needs: [setup, build]
+    runs-on: ubuntu-24.04
+    environment: ${{ needs.setup.outputs.channel }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CHANNEL: ${{ needs.setup.outputs.channel }}
+      KEY_NAME: ${{ needs.setup.outputs.channel == 'dev' && 'dev' || 'release' }}
+      KMS_KEY: ${{ needs.setup.outputs.channel == 'dev' && 'projects/mobile-build-hfe7uw/locations/us-central1/keyRings/carrier-pigeon-dev/cryptoKeys/carrier-pigeon-dev' || 'projects/mobile-build-hfe7uw/locations/us-central1/keyRings/carrier-pigeon-release/cryptoKeys/carrier-pigeon-release' }}
+      SIGNER: ${{ needs.setup.outputs.channel == 'dev' && 'carrier-pigeon-dev-sign@mobile-build-hfe7uw.iam.gserviceaccount.com' || 'carrier-pigeon-release-sign@mobile-build-hfe7uw.iam.gserviceaccount.com' }}
+      # apksig signs with SHA-512 for 4096-bit RSA keys, so these keys must be
+      # RSA_SIGN_PKCS1_4096_SHA512 in KMS (docs/signing.md).
+      KMS_DIGEST: sha512
+    outputs:
+      first: ${{ steps.first.outputs.first }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned
+          path: out
+      - name: First signing with this key?
+        id: first
+        run: |
+          cert="signing-certs/$KEY_NAME.pem"
+          echo "CERT=$cert" >> "$GITHUB_ENV"
+          if [ ! -f "$cert" ]; then
+            echo "first=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=New certificate::$cert doesn't exist yet. This run makes it and signs with it, but publishes nothing. Commit it to main (from the signed-$CHANNEL artifact), then release again."
+          fi
+
+      # The library signs with the short-lived credentials file this writes
+      # to the workspace.
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SIGNER }}
+      - name: Install the Cloud KMS PKCS#11 library
+        run: scripts/install_kmsp11.sh
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Get apksig
+        run: |
+          jar="$RUNNER_TEMP/apksig-$APKSIG_VERSION.jar"
+          curl --silent --show-error --fail --location -o "$jar" \
+            "https://dl.google.com/android/maven2/com/android/tools/build/apksig/$APKSIG_VERSION/apksig-$APKSIG_VERSION.jar"
+          echo "$APKSIG_SHA256  $jar" | sha256sum --check --strict
+          echo "APKSIG_JAR=$jar" >> "$GITHUB_ENV"
+
+      - name: Make the certificate
+        if: steps.first.outputs.first
+        run: |
+          sudo apt-get install --yes --no-install-recommends libengine-pkcs11-openssl
+          scripts/kms_sign.sh cert "$CERT" "Carrier Pigeon ($KEY_NAME)"
+
+      # kms_sign.sh checks the APK verifies and carries this certificate.
+      - name: Sign the APK
+        run: |
+          mkdir -p signed
+          flavor=$([ "$CHANNEL" = dev ] && echo dev || echo prod)
+          name="carrier-pigeon-$CHANNEL-${{ needs.build.outputs.version }}.apk"
+          scripts/kms_sign.sh apk "out/app-$flavor-release-unsigned.apk" "signed/$name" "$CERT"
+          [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-${{ env.CHANNEL }}
+          path: signed/
+          if-no-files-found: error
+          compression-level: 0
+
+  # The bundle for Play, signed with the upload key. Play App Signing re-signs
+  # it with the key Google holds, so Play builds don't carry the release key.
+  sign-bundle:
+    needs: [setup, build]
+    if: needs.setup.outputs.channel != 'dev'
+    runs-on: ubuntu-24.04
+    environment: ${{ needs.setup.outputs.channel }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CHANNEL: ${{ needs.setup.outputs.channel }}
+      KMS_KEY: projects/mobile-build-hfe7uw/locations/us-central1/keyRings/carrier-pigeon-play/cryptoKeys/carrier-pigeon-play
+      SIGNER: carrier-pigeon-play-sign@mobile-build-hfe7uw.iam.gserviceaccount.com
+      # jarsigner is told the algorithm, so the play key stays
+      # RSA_SIGN_PKCS1_4096_SHA256.
+      KMS_DIGEST: sha256
+      CERT: signing-certs/play.pem
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned
+          path: out
+      - name: First signing with this key?
+        id: first
+        run: |
+          if [ ! -f "$CERT" ]; then
+            echo "first=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=New certificate::$CERT doesn't exist yet. This run makes it; commit it to main from the bundle-$CHANNEL artifact. Upload that first bundle to Play Console by hand."
+          fi
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SIGNER }}
+      - name: Install the Cloud KMS PKCS#11 library
+        run: scripts/install_kmsp11.sh
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Make the upload certificate
+        if: steps.first.outputs.first
+        run: |
+          sudo apt-get install --yes --no-install-recommends libengine-pkcs11-openssl
+          scripts/kms_sign.sh cert "$CERT" "Carrier Pigeon (Play upload)"
+      - name: Sign the bundle
+        run: |
+          mkdir -p signed
+          cp out/app-prod-release.aab "signed/carrier-pigeon-$CHANNEL-${{ needs.build.outputs.version }}.aab"
+          scripts/kms_sign.sh aab signed/*.aab "$CERT"
+          [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle-${{ env.CHANNEL }}
+          path: signed/
+          if-no-files-found: error
+          compression-level: 0
+
+  # What F-Droid will check, before we publish: the independent rebuild is
+  # byte-for-byte the build we signed, and our signature copies onto it.
+  verify:
+    needs: [setup, build, rebuild, sign-apk]
+    if: needs.setup.outputs.channel != 'dev'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned
+          path: out
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: rebuild
+          path: rebuild
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-${{ needs.setup.outputs.channel }}
+          path: signed
+      - name: The rebuild is identical
+        run: |
+          sha256sum out/app-prod-release-unsigned.apk rebuild/app-prod-release-unsigned.apk
+          if ! cmp out/app-prod-release-unsigned.apk rebuild/app-prod-release-unsigned.apk; then
+            echo "::error::Two clean builds differ, so F-Droid couldn't reproduce this release. Compare the unsigned and rebuild artifacts with diffoscope."
+            exit 1
+          fi
+      - name: Our signature fits the rebuild (apksigcopier, as F-Droid does)
+        run: |
+          pip install --user apksigcopier==1.1.1
+          export PATH="$PATH:$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          apksigcopier compare --unsigned signed/*.apk rebuild/app-prod-release-unsigned.apk
+          echo "Reproducible: the signed APK is the rebuild plus our signature."
+
+  # The GitHub release for the pushed tag: a prerelease for qa.
+  publish:
+    needs: [setup, build, sign-apk, sign-bundle, verify]
+    if: needs.setup.outputs.channel != 'dev' && !needs.sign-apk.outputs.first
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-${{ needs.setup.outputs.channel }}
+          path: signed
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.setup.outputs.tag }}
+          CHANNEL: ${{ needs.setup.outputs.channel }}
+        run: |
+          prerelease=$([ "$CHANNEL" = qa ] && echo --prerelease || true)
+          gh release create "$TAG" signed/*.apk \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Carrier Pigeon ${TAG#v}" \
+            --generate-notes $prerelease

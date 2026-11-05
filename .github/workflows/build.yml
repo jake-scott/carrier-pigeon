@@ -1,0 +1,43 @@
+name: Build
+
+# Lint and debug builds, with no credentials. Runs on pull requests and on
+# pushes to dev, main and v* tags.
+#
+# Pushes to dev: the debug APKs are the sideload build. They are signed with
+# the Android debug key and have their own package (.debug, "Carrier Pigeon
+# Debug"), so they install beside the insiders and release builds.
+#
+# A v* tag's run finishing is also what starts a qa or prod release:
+# release.yml, as committed on main, picks it up (see that file).
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APKs
+        run: ./gradlew --no-daemon assembleProdDebug
+      - name: Lint
+        run: ./gradlew --no-daemon lintProdDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: carrier-pigeon-debug
+          path: |
+            app/build/outputs/apk/prod/debug/*.apk
+            app/build/reports/lint-results-prodDebug.html
+          if-no-files-found: warn
