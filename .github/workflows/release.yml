@@ -257,7 +257,7 @@ jobs:
           echo "CERT=$cert" >> "$GITHUB_ENV"
           if [ ! -f "$cert" ]; then
             echo "first=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=New certificate::$cert doesn't exist yet. This run makes it and signs with it, but publishes nothing. Commit it to main (from the signed-$CHANNEL artifact), then release again."
+            echo "::notice title=New certificate::$cert doesn't exist yet. This run makes it and signs with it, but publishes nothing. Commit it to main (from the new-cert-$KEY_NAME artifact), then release again."
           fi
 
       # The library signs with the short-lived credentials file this writes
@@ -295,6 +295,15 @@ jobs:
           scripts/kms_sign.sh apk "out/app-$flavor-release-unsigned.apk" "signed/$name" "$CERT"
           [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
 
+      # A new certificate is kept even if signing fails, so the next run
+      # doesn't make a different one.
+      - name: Keep a new certificate
+        if: always() && steps.first.outputs.first
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: new-cert-${{ env.KEY_NAME }}
+          path: ${{ env.CERT }}
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signed-${{ env.CHANNEL }}

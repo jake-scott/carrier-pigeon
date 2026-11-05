@@ -5,7 +5,7 @@
 # mobile/scripts/kms_sign.sh.
 #
 #   kms_sign.sh cert <out.pem> <common name>   make the key's certificate, once
-#   kms_sign.sh apk <in.apk> <out.apk> <cert>  sign an APK (v2 + v3, apksig)
+#   kms_sign.sh apk <in.apk> <out.apk> <cert>  sign an APK (v2/v3, apksig)
 #   kms_sign.sh aab <bundle.aab> <cert>        sign a bundle in place (jarsigner)
 #
 # Environment:
@@ -128,7 +128,9 @@ EOF
     certs=$("$apksigner" verify --verbose --print-certs "$out")
     echo "$certs"
     want=$(fingerprint "$cert")
-    got=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs")
+    # "Signer #1 certificate ..." or "V3.0 Signer: certificate ...", by
+    # apksigner version and by which schemes apksig wrote.
+    got=$(grep -m1 -oE 'certificate SHA-256 digest: [0-9a-f]{64}' <<<"$certs" | awk '{print $NF}')
     if [ "$want" != "$got" ]; then
       echo "$out is signed with certificate $got, expected $want" >&2
       exit 1

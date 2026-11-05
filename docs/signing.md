@@ -47,7 +47,7 @@ certificates from `main`.
    signature copies onto it with `apksigcopier`: the check F-Droid makes.
 4. `publish` creates the GitHub release.
 
-APKs are signed with APK Signature Scheme v2 and v3 only (minSdk 30), by a
+APKs are signed with APK Signature Scheme v3 (v2 and v1 are left out, as minSdk 30 always checks v3), by a
 small `apksig` program (`scripts/KmsApkSigner.java`), because `apksigner`
 can't attach our certificate when the key comes through PKCS#11. Bundles are
 signed with `jarsigner`, as in Tabby.
