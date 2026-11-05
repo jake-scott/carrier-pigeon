@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The dev channel installs beside the real app; tell them apart. -->
+    <string name="app_name">Carrier Pigeon Dev</string>
+    <string name="widget_name">Data SIM (dev)</string>
+</resources>

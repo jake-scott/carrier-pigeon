@@ -27,7 +27,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 
 ## Testing the spike
 
-1. Install the debug APK from the latest GitHub Actions run (artifact `carrier-pigeon-debug`), or build with `./gradlew assembleDebug`.
+1. Install the debug APK from the latest GitHub Actions run (artifact `carrier-pigeon-debug`), or build with `./gradlew assembleProdDebug`.
 2. Open the app and allow phone access.
 3. Add the "Data SIM" widget to your home screen.
 4. Use the phone normally for a day, ideally somewhere coverage changes, or force a switch by making a call on the non-data SIM.
@@ -35,4 +35,6 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 
 ## Building
 
-Requires JDK 17 and the Android SDK (compileSdk 36). `./gradlew assembleDebug`.
+Requires JDK 17 and the Android SDK (compileSdk 36). `./gradlew assembleProdDebug` builds a debug APK ("Carrier Pigeon Debug", its own package, installs beside any other build).
+
+Release builds are signed in CI with keys in Cloud KMS and are reproducible for F-Droid. See [docs/signing.md](docs/signing.md).
