@@ -35,9 +35,11 @@ class StateStore(context: Context) {
             p[EMBEDDED] = s.isEmbedded
             p[TINT] = s.iconTint
             if (s.networkType != null) p[NETWORK_TYPE] = s.networkType else p.remove(NETWORK_TYPE)
+            if (s.networkDetail != null) p[NETWORK_DETAIL] = s.networkDetail else p.remove(NETWORK_DETAIL)
             p[STATUS] = s.status.name
             p[ACCESS] = s.access
             p[VPN] = s.vpn
+            p[PHONE_ACCESS] = s.phoneAccess
             p[UPDATED] = s.updatedAtMillis
         }
     }
@@ -54,9 +56,11 @@ class StateStore(context: Context) {
             isEmbedded = this[EMBEDDED] ?: false,
             iconTint = this[TINT] ?: 0,
             networkType = this[NETWORK_TYPE],
+            networkDetail = this[NETWORK_DETAIL],
             status = this[STATUS]?.let { name -> DataStatus.entries.firstOrNull { it.name == name } } ?: DataStatus.OK,
             access = this[ACCESS] ?: DataSimResolver.NO_DATA,
             vpn = this[VPN] ?: false,
+            phoneAccess = this[PHONE_ACCESS] ?: true,
             updatedAtMillis = updated,
         )
     }
@@ -71,9 +75,11 @@ class StateStore(context: Context) {
         val EMBEDDED = booleanPreferencesKey("embedded")
         val TINT = intPreferencesKey("tint")
         val NETWORK_TYPE = stringPreferencesKey("network_type")
+        val NETWORK_DETAIL = stringPreferencesKey("network_detail")
         val STATUS = stringPreferencesKey("status")
         val ACCESS = stringPreferencesKey("access")
         val VPN = booleanPreferencesKey("vpn")
+        val PHONE_ACCESS = booleanPreferencesKey("phone_access")
         val UPDATED = longPreferencesKey("updated_at")
     }
 }

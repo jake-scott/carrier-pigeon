@@ -8,7 +8,7 @@ Licensed under the [Apache License 2.0](LICENSE).
 
 This build is a spike to confirm, on a real phone, that every automatic data SIM switch is reported. It contains:
 
-- A widget. Top line: the carrier carrying mobile data, marked **default** (your data SIM in Settings) or **backup** (the phone moved data to another SIM). Bottom line: how the phone is reaching the internet right now: Wi-Fi, 5G, LTE, 3G, 2G or No data, with "+ VPN" when the default route goes over a VPN. The dot is the SIM's colour, grey when that SIM can't carry data (airplane mode, mobile data off, no service). Tap it to refresh.
+- A widget. Top line: the carrier carrying mobile data, marked **default** (your data SIM in Settings) or **backup** (the phone moved data to another SIM). Bottom line: how the phone is reaching the internet right now: Wi-Fi, a mobile network, or No data, with "+ VPN" when the default route goes over a VPN. The mobile network is shown the way the status bar sees it (turn on "Show network detail" in the app to also see what is underneath it, e.g. "LTE + NR"): **5G SA**, **5G NSA** (LTE + NR: registered on LTE with 5G added on top, which is why other apps that read the raw network type say LTE), **5G+ NSA** (high-band NR), **LTE-A Pro** (sometimes branded "5G E", but LTE), **LTE+** (carrier aggregation), **LTE**, 3G or 2G. The dot is the SIM's colour, grey when that SIM can't carry data (airplane mode, mobile data off, no service). Tap it to refresh.
 - An app screen with the current state, all active SIMs, and a switch log you can share.
 
 ## How it detects switches
@@ -28,7 +28,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 ## Testing the spike
 
 1. Install the debug APK from the latest GitHub Actions run (artifact `carrier-pigeon-debug`), or build with `./gradlew assembleProdDebug`.
-2. Open the app and allow phone access.
+2. Open the app and allow phone access when it asks. (If you add the widget first, it says "Tap to allow phone access"; tapping it opens the app and asks.)
 3. Add the "Data SIM" widget to your home screen.
 4. Use the phone normally for a day, ideally somewhere coverage changes, or force a switch by making a call on the non-data SIM.
 5. Open the app and tap **Share log**. Lines marked `SWITCH` are switches and `NOTE` lines record process starts and listener registration; `reason=` shows which path reported it, and `network=` cross-checks the sub behind the cellular network.

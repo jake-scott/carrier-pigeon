@@ -63,6 +63,8 @@ object DataSimRefresher {
     private suspend fun refreshNow(app: Context, reason: String, networkSubId: Int) {
         // Retry any in-process listener that failed earlier, e.g. before the permission was granted.
         withContext(Dispatchers.Main) { DataSimMonitor.registerInProcessListeners(app) }
+        // A listener registered just now delivers the 5G NSA override a moment later; wait for it.
+        DisplayInfoTracker.awaitFirst(SubscriptionManager.getActiveDataSubscriptionId())
         val changed = mutex.withLock {
             val store = StateStore(app)
             val old = store.current()

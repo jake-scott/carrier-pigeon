@@ -36,6 +36,8 @@ object DataSimMonitor {
     /** Fires often (e.g. Wi-Fi signal changes), so unchanged results from it aren't logged. */
     const val DEFAULT_NETWORK_REASON = "default-network"
     const val SERVICE_STATE_REASON = "service-state"
+    /** 5G NSA / LTE+ overrides; can change often as the phone moves between cells. */
+    const val DISPLAY_INFO_REASON = "display-info"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var telephonyCallback: Any? = null
@@ -113,6 +115,16 @@ object DataSimMonitor {
         registerSubscriptionsListener(app)
         registerDefaultNetworkCallback(app)
         registerRuntimeReceiver(app)
+        syncDisplayInfoListeners(app)
+    }
+
+    /** One display-info listener per active SIM, plus the active data SIM if we can't list SIMs. */
+    private fun syncDisplayInfoListeners(app: Context) {
+        val subIds = DataSimResolver(app).activeSubscriptions().map { it.subscriptionId }.toMutableSet()
+        subIds += SubscriptionManager.getActiveDataSubscriptionId()
+        DisplayInfoTracker.sync(app, subIds) {
+            scope.launch { DataSimRefresher.refresh(app, DISPLAY_INFO_REASON) }
+        }
     }
 
     private fun registerTelephonyCallback(app: Context) {
