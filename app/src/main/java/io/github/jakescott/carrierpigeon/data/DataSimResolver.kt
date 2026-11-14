@@ -47,6 +47,7 @@ class DataSimResolver(private val context: Context) {
             status = status(active),
             access = access,
             vpn = vpn,
+            phoneAccess = hasPhoneStatePermission(),
             updatedAtMillis = System.currentTimeMillis(),
         )
     }

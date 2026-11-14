@@ -3,8 +3,10 @@ package io.github.jakescott.carrierpigeon.ui
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -63,10 +65,31 @@ import kotlinx.coroutines.withContext
 
 /** Proof-of-concept screen: current data SIM, all active SIMs, and the spike log. */
 class MainActivity : ComponentActivity() {
+    /** Bumped each time the widget opens us to ask for phone access. */
+    private var accessRequests by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { AppTheme { MainScreen() } }
+        if (savedInstanceState == null) takeAccessRequest(intent)
+        setContent { AppTheme { MainScreen(accessRequests) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeAccessRequest(intent)
+    }
+
+    private fun takeAccessRequest(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_REQUEST_PHONE_ACCESS, false) == true) {
+            intent.removeExtra(EXTRA_REQUEST_PHONE_ACCESS)
+            accessRequests++
+        }
+    }
+
+    companion object {
+        /** Set by the widget when phone access is missing: ask for it as soon as the screen opens. */
+        const val EXTRA_REQUEST_PHONE_ACCESS = "io.github.jakescott.carrierpigeon.REQUEST_PHONE_ACCESS"
     }
 
     override fun onResume() {
@@ -89,7 +112,7 @@ private fun AppTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MainScreen() {
+private fun MainScreen(accessRequests: Int) {
     val context = LocalContext.current
     val app = context.applicationContext
     val scope = rememberCoroutineScope()
@@ -98,12 +121,39 @@ private fun MainScreen() {
     val log = remember { SwitchLog(app) }
     val state by store.state.collectAsState(initial = null)
 
+    val settings = remember { AppSettings(app) }
     var hasPermission by remember { mutableStateOf(resolver.hasPhoneStatePermission()) }
+    // Access can also be granted or revoked in Settings while we're in the background.
+    LaunchedEffect(state) { hasPermission = resolver.hasPhoneStatePermission() }
     var logLines by remember { mutableStateOf(emptyList<String>()) }
     var logVersion by remember { mutableIntStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
         scope.launch { DataSimRefresher.refresh(app, "permission-result", settle = false) }
+    }
+    val activity = context as ComponentActivity
+    /**
+     * Shows the system prompt. After "don't ask again" Android silently refuses, so once we have
+     * asked before and it won't show a rationale either, open the app's settings page instead.
+     */
+    val requestPhoneAccess: () -> Unit = {
+        scope.launch {
+            val blocked = settings.askedForPhoneAccess() &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.READ_PHONE_STATE)
+            if (blocked) {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                )
+            } else {
+                settings.setAskedForPhoneAccess()
+                permissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+            }
+        }
+    }
+    // Ask on the first ever open, and whenever the widget sends us here to ask.
+    LaunchedEffect(accessRequests) {
+        if (resolver.hasPhoneStatePermission()) return@LaunchedEffect
+        if (accessRequests > 0 || !settings.askedForPhoneAccess()) requestPhoneAccess()
     }
 
     LaunchedEffect(state, logVersion) {
@@ -112,7 +162,6 @@ private fun MainScreen() {
     val sims = remember(state, hasPermission) { resolver.activeSubscriptions() }
     // Redraw the SIM list when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
     val displayInfoVersion by DisplayInfoTracker.version.collectAsState()
-    val settings = remember { AppSettings(app) }
     val showDetail by settings.showNetworkDetail.collectAsState(initial = false)
 
     Scaffold { padding ->
@@ -127,8 +176,8 @@ private fun MainScreen() {
                 item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Allow phone access to show SIM names and carriers. Without it the widget can only say SIM 1 or SIM 2.")
-                            Button(onClick = { permissionLauncher.launch(Manifest.permission.READ_PHONE_STATE) }) {
+                            Text("Allow phone access to show your SIM names. Without it the widget can only show the carrier name stored on the SIM.")
+                            Button(onClick = requestPhoneAccess) {
                                 Text("Allow")
                             }
                         }

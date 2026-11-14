@@ -28,7 +28,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 ## Testing the spike
 
 1. Install the debug APK from the latest GitHub Actions run (artifact `carrier-pigeon-debug`), or build with `./gradlew assembleProdDebug`.
-2. Open the app and allow phone access.
+2. Open the app and allow phone access when it asks. (If you add the widget first, it says "Tap to allow phone access"; tapping it opens the app and asks.)
 3. Add the "Data SIM" widget to your home screen.
 4. Use the phone normally for a day, ideally somewhere coverage changes, or force a switch by making a call on the non-data SIM.
 5. Open the app and tap **Share log**. Lines marked `SWITCH` are switches and `NOTE` lines record process starts and listener registration; `reason=` shows which path reported it, and `network=` cross-checks the sub behind the cellular network.

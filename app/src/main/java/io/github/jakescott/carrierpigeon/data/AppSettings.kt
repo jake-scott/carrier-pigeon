@@ -26,7 +26,18 @@ class AppSettings(context: Context) {
         store.edit { it[SHOW_NETWORK_DETAIL] = show }
     }
 
+    /**
+     * True once we have shown the phone-access prompt. Android reports a permanent "don't ask again"
+     * the same way as "never asked", so this tells the two apart.
+     */
+    suspend fun askedForPhoneAccess(): Boolean = store.data.first()[ASKED_PHONE_ACCESS] ?: false
+
+    suspend fun setAskedForPhoneAccess() {
+        store.edit { it[ASKED_PHONE_ACCESS] = true }
+    }
+
     private companion object {
         val SHOW_NETWORK_DETAIL = booleanPreferencesKey("show_network_detail")
+        val ASKED_PHONE_ACCESS = booleanPreferencesKey("asked_phone_access")
     }
 }

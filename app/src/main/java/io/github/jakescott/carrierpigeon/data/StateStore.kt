@@ -39,6 +39,7 @@ class StateStore(context: Context) {
             p[STATUS] = s.status.name
             p[ACCESS] = s.access
             p[VPN] = s.vpn
+            p[PHONE_ACCESS] = s.phoneAccess
             p[UPDATED] = s.updatedAtMillis
         }
     }
@@ -59,6 +60,7 @@ class StateStore(context: Context) {
             status = this[STATUS]?.let { name -> DataStatus.entries.firstOrNull { it.name == name } } ?: DataStatus.OK,
             access = this[ACCESS] ?: DataSimResolver.NO_DATA,
             vpn = this[VPN] ?: false,
+            phoneAccess = this[PHONE_ACCESS] ?: true,
             updatedAtMillis = updated,
         )
     }
@@ -77,6 +79,7 @@ class StateStore(context: Context) {
         val STATUS = stringPreferencesKey("status")
         val ACCESS = stringPreferencesKey("access")
         val VPN = booleanPreferencesKey("vpn")
+        val PHONE_ACCESS = booleanPreferencesKey("phone_access")
         val UPDATED = longPreferencesKey("updated_at")
     }
 }
