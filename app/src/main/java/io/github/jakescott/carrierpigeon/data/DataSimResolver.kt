@@ -31,8 +31,8 @@ class DataSimResolver(private val context: Context) {
         val active = SubscriptionManager.getActiveDataSubscriptionId()
         val defaultSub = SubscriptionManager.getDefaultDataSubscriptionId()
         val info = subscriptionInfo(active)
-        val cellularType = networkType(active)
-        val (access, vpn) = access(cellularType)
+        val network = networkLabel(active)
+        val (access, vpn) = access(network?.badge)
         return DataSimState(
             activeSubId = active,
             defaultSubId = defaultSub,
@@ -42,7 +42,8 @@ class DataSimResolver(private val context: Context) {
             slotIndex = info?.simSlotIndex ?: -1,
             isEmbedded = info?.isEmbedded ?: false,
             iconTint = info?.iconTint ?: 0,
-            networkType = cellularType,
+            networkType = network?.badge,
+            networkDetail = network?.detail,
             status = status(active),
             access = access,
             vpn = vpn,
@@ -136,33 +137,24 @@ class DataSimResolver(private val context: Context) {
         }
     }
 
-    private fun networkType(subId: Int): String? {
-        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID || !hasPhoneStatePermission()) return null
+    /**
+     * The SIM's network as the status bar would show it, e.g. "5G NSA" over "LTE + NR". Combines the
+     * raw data network type with the carrier's display override (see [NetworkLabel.of]).
+     */
+    fun networkLabel(subId: Int): NetworkLabel? {
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return null
+        val display = DisplayInfoTracker.displayInfo(subId)
+        val raw = display?.networkType?.takeIf { it != TelephonyManager.NETWORK_TYPE_UNKNOWN }
+            ?: rawNetworkType(subId)
+        return NetworkLabel.of(raw, display?.overrideNetworkType)
+    }
+
+    private fun rawNetworkType(subId: Int): Int {
+        if (!hasPhoneStatePermission()) return TelephonyManager.NETWORK_TYPE_UNKNOWN
         return try {
-            when (telephonyManager.createForSubscriptionId(subId).dataNetworkType) {
-                TelephonyManager.NETWORK_TYPE_NR -> "5G"
-                TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
-                TelephonyManager.NETWORK_TYPE_HSPAP,
-                TelephonyManager.NETWORK_TYPE_HSPA,
-                TelephonyManager.NETWORK_TYPE_HSDPA,
-                TelephonyManager.NETWORK_TYPE_HSUPA,
-                TelephonyManager.NETWORK_TYPE_UMTS,
-                TelephonyManager.NETWORK_TYPE_TD_SCDMA,
-                TelephonyManager.NETWORK_TYPE_EVDO_0,
-                TelephonyManager.NETWORK_TYPE_EVDO_A,
-                TelephonyManager.NETWORK_TYPE_EVDO_B,
-                TelephonyManager.NETWORK_TYPE_EHRPD -> "3G"
-                TelephonyManager.NETWORK_TYPE_GSM,
-                TelephonyManager.NETWORK_TYPE_GPRS,
-                TelephonyManager.NETWORK_TYPE_EDGE,
-                TelephonyManager.NETWORK_TYPE_CDMA,
-                TelephonyManager.NETWORK_TYPE_1xRTT,
-                TelephonyManager.NETWORK_TYPE_IDEN -> "2G"
-                // Unknown, or mid-switch: show nothing rather than a misleading generation.
-                else -> null
-            }
+            telephonyManager.createForSubscriptionId(subId).dataNetworkType
         } catch (e: SecurityException) {
-            null
+            TelephonyManager.NETWORK_TYPE_UNKNOWN
         }
     }
 

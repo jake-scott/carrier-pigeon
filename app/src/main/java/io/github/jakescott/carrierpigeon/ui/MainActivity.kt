@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -48,6 +49,8 @@ import androidx.lifecycle.lifecycleScope
 import io.github.jakescott.carrierpigeon.data.DataSimRefresher
 import io.github.jakescott.carrierpigeon.data.DataSimResolver
 import io.github.jakescott.carrierpigeon.data.DataSimState
+import io.github.jakescott.carrierpigeon.data.DisplayInfoTracker
+import io.github.jakescott.carrierpigeon.data.NetworkLabel
 import io.github.jakescott.carrierpigeon.data.StateStore
 import io.github.jakescott.carrierpigeon.data.SwitchLog
 import kotlinx.coroutines.Dispatchers
@@ -103,6 +106,8 @@ private fun MainScreen() {
         logLines = withContext(Dispatchers.IO) { log.readLines().asReversed() }
     }
     val sims = remember(state, hasPermission) { resolver.activeSubscriptions() }
+    // Redraw the SIM list when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
+    val displayInfoVersion by DisplayInfoTracker.version.collectAsState()
 
     Scaffold { padding ->
         LazyColumn(
@@ -129,10 +134,16 @@ private fun MainScreen() {
                 item { Text("Active SIMs", style = MaterialTheme.typography.titleMedium) }
                 items(sims, key = { it.subscriptionId }) { info ->
                     val marker = if (info.subscriptionId == state?.activeSubId) "  ← data" else ""
-                    Text(
-                        "#${info.subscriptionId}  slot ${info.simSlotIndex + 1}  ${info.displayName} (${info.carrierName})" +
-                            (if (info.isEmbedded) "  eSIM" else "") + marker,
-                    )
+                    val network = remember(info.subscriptionId, state, displayInfoVersion) {
+                        resolver.networkLabel(info.subscriptionId)
+                    }
+                    Column {
+                        Text(
+                            "#${info.subscriptionId}  slot ${info.simSlotIndex + 1}  ${info.displayName} (${info.carrierName})" +
+                                (if (info.isEmbedded) "  eSIM" else "") + marker,
+                        )
+                        network?.let { NetworkLine(it) }
+                    }
                 }
             }
             item {
@@ -173,8 +184,19 @@ private fun CurrentSimCard(state: DataSimState?) {
                 Text("Internet via: ${state.accessLine}")
                 Text(if (state.isTemporarySwitch) "Backup SIM (not your default data SIM)" else "Your default data SIM")
                 state.carrierName?.let { Text("Carrier: $it") }
-                state.networkType?.let { Text("Network: $it") }
+                state.networkType?.let { NetworkLine(NetworkLabel(it, state.networkDetail)) }
             }
+        }
+    }
+}
+
+/** "Network: 5G NSA" with what is underneath it ("LTE + NR") in smaller text. */
+@Composable
+private fun NetworkLine(network: NetworkLabel) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Network: ${network.badge}", fontWeight = FontWeight.Medium)
+        network.detail?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

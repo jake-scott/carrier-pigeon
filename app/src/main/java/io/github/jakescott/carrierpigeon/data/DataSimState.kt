@@ -27,10 +27,12 @@ data class DataSimState(
     val isEmbedded: Boolean,
     /** ARGB colour Android assigns to this SIM, or 0 if unknown. */
     val iconTint: Int,
-    /** e.g. "5G", "LTE"; null if unknown. */
+    /** e.g. "5G NSA", "LTE+", "LTE"; null if unknown. See [NetworkLabel]. */
     val networkType: String?,
+    /** What is underneath [networkType], e.g. "LTE + NR" for 5G NSA; null when there is nothing to add. */
+    val networkDetail: String?,
     val status: DataStatus,
-    /** How the device is reaching the internet right now: "Wi-Fi", "5G", "LTE", "No data", ... */
+    /** How the device is reaching the internet right now: "Wi-Fi", "5G NSA", "LTE", "No data", ... */
     val access: String,
     /** True when the default route goes over a VPN. */
     val vpn: Boolean,
@@ -46,6 +48,9 @@ data class DataSimState(
 
     /** Bottom line of the widget, e.g. "Wi-Fi + VPN". */
     val accessLine: String get() = if (vpn) "$access + VPN" else access
+
+    /** True when data is going over the data SIM, so [networkDetail] describes the [access] in use. */
+    val accessIsCellular: Boolean get() = networkType != null && access == networkType
 
     /** Best short label for the widget. */
     val label: String

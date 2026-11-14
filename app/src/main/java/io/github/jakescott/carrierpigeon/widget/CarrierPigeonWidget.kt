@@ -100,13 +100,28 @@ private fun WidgetContent(state: DataSimState?) {
                         )
                     }
                 }
-                // Bottom line: how the device is reaching the internet right now.
+                // Bottom line: how the device is reaching the internet right now. On mobile data, the
+                // network badge ("5G NSA") is followed by what is underneath it ("LTE + NR").
                 if (state != null) {
-                    Text(
-                        text = state.accessLine,
-                        maxLines = 1,
-                        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp),
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = state.accessLine,
+                            maxLines = 1,
+                            style = TextStyle(
+                                color = GlanceTheme.colors.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                fontWeight = if (state.accessIsCellular) FontWeight.Medium else FontWeight.Normal,
+                            ),
+                        )
+                        val detail = state.networkDetail
+                        if (!compact && state.accessIsCellular && detail != null) {
+                            Text(
+                                text = "  $detail",
+                                maxLines = 1,
+                                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp),
+                            )
+                        }
+                    }
                 }
             }
         }
