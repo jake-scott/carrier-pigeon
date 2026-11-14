@@ -34,6 +34,7 @@ import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import io.github.jakescott.carrierpigeon.data.AppSettings
 import io.github.jakescott.carrierpigeon.data.DataSimRefresher
 import io.github.jakescott.carrierpigeon.data.DataSimState
 import io.github.jakescott.carrierpigeon.data.DataStatus
@@ -46,18 +47,21 @@ class CarrierPigeonWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val store = StateStore(context)
+        val settings = AppSettings(context)
         val initial = store.current()
+        val initialShowDetail = settings.showNetworkDetail()
         provideContent {
             val state by remember { store.state }.collectAsState(initial)
+            val showDetail by remember { settings.showNetworkDetail }.collectAsState(initialShowDetail)
             GlanceTheme {
-                WidgetContent(state)
+                WidgetContent(state, showDetail)
             }
         }
     }
 }
 
 @Composable
-private fun WidgetContent(state: DataSimState?) {
+private fun WidgetContent(state: DataSimState?, showDetail: Boolean) {
     val compact = LocalSize.current.width < 110.dp
     // Grey dot when the data SIM can't carry data (airplane mode, data off, no service).
     val dotColor = if (state == null || state.status != DataStatus.OK) {
@@ -101,7 +105,7 @@ private fun WidgetContent(state: DataSimState?) {
                     }
                 }
                 // Bottom line: how the device is reaching the internet right now. On mobile data, the
-                // network badge ("5G NSA") is followed by what is underneath it ("LTE + NR").
+                // network badge ("5G NSA") can be followed by what is underneath it ("LTE + NR").
                 if (state != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -114,7 +118,7 @@ private fun WidgetContent(state: DataSimState?) {
                             ),
                         )
                         val detail = state.networkDetail
-                        if (!compact && state.accessIsCellular && detail != null) {
+                        if (showDetail && !compact && state.accessIsCellular && detail != null) {
                             Text(
                                 text = "  $detail",
                                 maxLines = 1,

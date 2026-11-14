@@ -24,6 +24,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -46,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import androidx.glance.appwidget.updateAll
+import io.github.jakescott.carrierpigeon.data.AppSettings
 import io.github.jakescott.carrierpigeon.data.DataSimRefresher
 import io.github.jakescott.carrierpigeon.data.DataSimResolver
 import io.github.jakescott.carrierpigeon.data.DataSimState
@@ -53,6 +56,7 @@ import io.github.jakescott.carrierpigeon.data.DisplayInfoTracker
 import io.github.jakescott.carrierpigeon.data.NetworkLabel
 import io.github.jakescott.carrierpigeon.data.StateStore
 import io.github.jakescott.carrierpigeon.data.SwitchLog
+import io.github.jakescott.carrierpigeon.widget.CarrierPigeonWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,6 +112,8 @@ private fun MainScreen() {
     val sims = remember(state, hasPermission) { resolver.activeSubscriptions() }
     // Redraw the SIM list when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
     val displayInfoVersion by DisplayInfoTracker.version.collectAsState()
+    val settings = remember { AppSettings(app) }
+    val showDetail by settings.showNetworkDetail.collectAsState(initial = false)
 
     Scaffold { padding ->
         LazyColumn(
@@ -129,7 +135,32 @@ private fun MainScreen() {
                     }
                 }
             }
-            item { CurrentSimCard(state) }
+            item { CurrentSimCard(state, showDetail) }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Show network detail")
+                        Text(
+                            "What is under the network badge, e.g. \"LTE + NR\" after 5G NSA",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = showDetail,
+                        onCheckedChange = { show ->
+                            scope.launch {
+                                settings.setShowNetworkDetail(show)
+                                CarrierPigeonWidget().updateAll(app)
+                            }
+                        },
+                    )
+                }
+            }
             if (sims.isNotEmpty()) {
                 item { Text("Active SIMs", style = MaterialTheme.typography.titleMedium) }
                 items(sims, key = { it.subscriptionId }) { info ->
@@ -142,7 +173,7 @@ private fun MainScreen() {
                             "#${info.subscriptionId}  slot ${info.simSlotIndex + 1}  ${info.displayName} (${info.carrierName})" +
                                 (if (info.isEmbedded) "  eSIM" else "") + marker,
                         )
-                        network?.let { NetworkLine(it) }
+                        network?.let { NetworkLine(it, showDetail) }
                     }
                 }
             }
@@ -173,7 +204,7 @@ private fun MainScreen() {
 }
 
 @Composable
-private fun CurrentSimCard(state: DataSimState?) {
+private fun CurrentSimCard(state: DataSimState?, showDetail: Boolean) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Mobile data is on", style = MaterialTheme.typography.labelLarge)
@@ -184,18 +215,18 @@ private fun CurrentSimCard(state: DataSimState?) {
                 Text("Internet via: ${state.accessLine}")
                 Text(if (state.isTemporarySwitch) "Backup SIM (not your default data SIM)" else "Your default data SIM")
                 state.carrierName?.let { Text("Carrier: $it") }
-                state.networkType?.let { NetworkLine(NetworkLabel(it, state.networkDetail)) }
+                state.networkType?.let { NetworkLine(NetworkLabel(it, state.networkDetail), showDetail) }
             }
         }
     }
 }
 
-/** "Network: 5G NSA" with what is underneath it ("LTE + NR") in smaller text. */
+/** "Network: 5G NSA", optionally with what is underneath it ("LTE + NR") in smaller text. */
 @Composable
-private fun NetworkLine(network: NetworkLabel) {
+private fun NetworkLine(network: NetworkLabel, showDetail: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Network: ${network.badge}", fontWeight = FontWeight.Medium)
-        network.detail?.let {
+        network.detail?.takeIf { showDetail }?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

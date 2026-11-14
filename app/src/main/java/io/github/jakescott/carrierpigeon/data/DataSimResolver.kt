@@ -38,8 +38,8 @@ class DataSimResolver(private val context: Context) {
             defaultSubId = defaultSub,
             networkSubId = networkSubId,
             displayName = info?.displayName?.toString(),
-            carrierName = info?.carrierName?.toString(),
-            slotIndex = info?.simSlotIndex ?: -1,
+            carrierName = info?.carrierName?.toString() ?: simOperatorName(active),
+            slotIndex = info?.simSlotIndex ?: slotIndex(active),
             isEmbedded = info?.isEmbedded ?: false,
             iconTint = info?.iconTint ?: 0,
             networkType = network?.badge,
@@ -115,6 +115,23 @@ class DataSimResolver(private val context: Context) {
         }
         return DataStatus.OK
     }
+
+    /**
+     * Carrier name from the SIM itself. Needs no permission, so the widget still names the carrier
+     * when READ_PHONE_STATE hasn't been granted (e.g. a freshly installed debug build).
+     */
+    private fun simOperatorName(subId: Int): String? {
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return null
+        return try {
+            telephonyManager.createForSubscriptionId(subId).simOperatorName?.takeIf { it.isNotBlank() }
+        } catch (e: RuntimeException) {
+            null
+        }
+    }
+
+    /** SIM slot for [subId]; needs no permission. -1 if unknown. */
+    private fun slotIndex(subId: Int): Int =
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) -1 else SubscriptionManager.getSlotIndex(subId)
 
     /** All active SIMs, for the app screen. Empty without READ_PHONE_STATE. */
     fun activeSubscriptions(): List<SubscriptionInfo> {
