@@ -15,12 +15,9 @@ import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
-import androidx.glance.action.ActionParameters
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
-import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
@@ -38,7 +35,6 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import io.github.jakescott.carrierpigeon.data.AppSettings
-import io.github.jakescott.carrierpigeon.data.DataSimRefresher
 import io.github.jakescott.carrierpigeon.data.DataSimState
 import io.github.jakescott.carrierpigeon.data.DataStatus
 import io.github.jakescott.carrierpigeon.data.StateStore
@@ -68,17 +64,14 @@ class CarrierPigeonWidget : GlanceAppWidget() {
 private fun WidgetContent(state: DataSimState?, showDetail: Boolean) {
     val compact = LocalSize.current.width < 110.dp
     val context = LocalContext.current
-    // Without phone access a tap opens the app, which asks for it; a widget can't show the prompt itself.
+    // A tap always opens the app, which refreshes the widget as it opens. Without phone access it
+    // also asks for it straight away; a widget can't show the permission prompt itself.
     val needsAccess = state != null && !state.phoneAccess
-    val onTap = if (needsAccess) {
-        actionStartActivity(
-            Intent(context, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_REQUEST_PHONE_ACCESS, true)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        )
-    } else {
-        actionRunCallback<RefreshAction>()
-    }
+    val onTap = actionStartActivity(
+        Intent(context, MainActivity::class.java)
+            .apply { if (needsAccess) putExtra(MainActivity.EXTRA_REQUEST_PHONE_ACCESS, true) }
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+    )
     // Grey dot when the data SIM can't carry data (airplane mode, data off, no service).
     val dotColor = if (state == null || state.status != DataStatus.OK) {
         Color(0xFF9E9E9E)
@@ -160,12 +153,5 @@ private fun marker(s: DataSimState?, compact: Boolean): String? {
     return when {
         s.isTemporarySwitch -> if (compact) " ⇄" else "  backup"
         else -> if (compact) " ★" else "  default"
-    }
-}
-
-/** Tapping the widget re-reads the data SIM, so the user can always force it to be current. */
-class RefreshAction : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        DataSimRefresher.refresh(context, "widget-tap", settle = false)
     }
 }

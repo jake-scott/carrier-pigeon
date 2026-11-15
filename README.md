@@ -8,7 +8,7 @@ Licensed under the [Apache License 2.0](LICENSE).
 
 This build is a spike to confirm, on a real phone, that every automatic data SIM switch is reported. It contains:
 
-- A widget. Top line: the carrier carrying mobile data, marked **default** (your data SIM in Settings) or **backup** (the phone moved data to another SIM). Bottom line: how the phone is reaching the internet right now: Wi-Fi, a mobile network, or No data, with "+ VPN" when the default route goes over a VPN. The mobile network is shown the way the status bar sees it (turn on "Show network detail" in the app to also see what is underneath it, e.g. "LTE + NR"): **5G SA**, **5G NSA** (LTE + NR: registered on LTE with 5G added on top, which is why other apps that read the raw network type say LTE), **5G+ NSA** (high-band NR), **LTE-A Pro** (sometimes branded "5G E", but LTE), **LTE+** (carrier aggregation), **LTE**, 3G or 2G. The dot is the SIM's colour, grey when that SIM can't carry data (airplane mode, mobile data off, no service). Tap it to refresh.
+- A widget. Top line: the carrier carrying mobile data, marked **default** (your data SIM in Settings) or **backup** (the phone moved data to another SIM). Bottom line: how the phone is reaching the internet right now: Wi-Fi, a mobile network, or No data, with "+ VPN" when the default route goes over a VPN. The mobile network is shown the way the status bar sees it (turn on "Show network detail" in the app to also see what is underneath it, e.g. "LTE + NR"): **5G SA**, **5G NSA** (LTE + NR: registered on LTE with 5G added on top, which is why other apps that read the raw network type say LTE), **5G+ NSA** (high-band NR), **LTE-A Pro** (sometimes branded "5G E", but LTE), **LTE+** (carrier aggregation), **LTE**, 3G or 2G. The dot is the SIM's colour, grey when that SIM can't carry data (airplane mode, mobile data off, no service). Tap it to open the app, which also refreshes the widget.
 - An app screen with the current state, all active SIMs, and a switch log you can share.
 
 ## How it detects switches
@@ -21,7 +21,7 @@ This build is a spike to confirm, on a real phone, that every automatic data SIM
 | `CARRIER_CONFIG_CHANGED` and default-data broadcasts | Manifest receiver, even when the app isn't running: an eSIM enabled or disabled, default data SIM changed. |
 | Airplane mode broadcast, service-state and mobile-data listeners | Show "Airplane mode", "Mobile data off" or "No service" instead of a SIM that can't carry data. |
 | A second `PendingIntent` network callback for any internet network, VPNs included, plus an in-process default-network callback | Keeps the bottom line (Wi-Fi / mobile / VPN) current. Losing Wi-Fi while the app's process is dead is only caught at the next event or the 30-minute refresh. |
-| Boot / app update receiver, widget refresh every 30 min, widget tap | Safety nets. |
+| Boot / app update receiver, widget refresh every 30 min, opening the app (or tapping the widget, which opens it) | Safety nets. |
 
 Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiveDataSubscriptionId()`, writes the result to DataStore and redraws the widget. The widget itself only reads stored state.
 
