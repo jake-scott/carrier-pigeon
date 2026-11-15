@@ -1,23 +1,30 @@
 name: Release
 
-# Builds Carrier Pigeon and signs it with the app's keys in Cloud KMS
-# (mobile-build-infra, build/apps.tf). docs/signing.md has the whole picture.
+# Builds Carrier Pigeon, signs it with the app's keys in Cloud KMS
+# (mobile-build-infra, build/apps.tf) and ships it. docs/signing.md has the
+# whole picture.
 #
-#   trigger                   channel  flavor  signed with           published
-#   push to main              dev      dev     dev key (APK)         run artifact, for insiders
-#   tag vX.Y.Z-rc.N           qa       prod    release key (APK),    GitHub prerelease
-#                                              play key (bundle)
-#   tag vX.Y.Z                prod     prod    same                  GitHub release; F-Droid builds the tag
+#   trigger       channel   GitHub env  built                signed with         goes to
+#   push to dev   dev       dev         dev APK              dev key             Firebase App Distribution
+#                                                                                (group carrier-pigeon-dev)
+#   push to main  internal  qa          prod bundle          play (upload) key   Play internal track
+#   tag vX.Y.Z    prod      prod        prod APK, rebuilt    release key         GitHub release (F-Droid builds
+#                                       and checked                              the tag); the internal Play
+#                                                                                release built from the tagged
+#                                                                                commit promoted to production
 #
-# (Pushes to dev get a sideloadable debug build from build.yml, unsigned by
-# KMS.)
+# A tag doesn't build a new Play bundle: it promotes the one main built from
+# the same commit, which testers already had. Tag a commit main has built.
 #
 # Who can sign. Each key's signer account trusts exactly one value of
-#   <GitHub environment>|jake-scott/carrier-pigeon/.github/workflows/release.yml@refs/heads/main
-# so only this file, as committed on main, running in the dev, qa or prod
-# GitHub environment, can sign. An edited copy on another branch, a pull
-# request, or a dev run asking for the release key are all refused by
-# Google.
+#   <GitHub environment>|jake-scott/carrier-pigeon/.github/workflows/release.yml@<ref>
+# The dev key trusts the dev environment on refs/heads/dev; the release and
+# play keys trust qa and prod on refs/heads/main. So only this file, as
+# committed on that branch, running in that environment, can sign. An edited
+# copy on another branch, a pull request, or a dev run asking for the release
+# key are all refused by Google. Anyone who can push to dev can change this
+# file there and sign with the dev key (only the dev key), so dev takes
+# changes through pull requests.
 #
 # Tags. A workflow triggered by a tag push runs the tag's copy of itself, as
 # refs/tags/..., which the keys don't trust, and which anyone could have
@@ -28,26 +35,32 @@ name: Release
 # versionName, before building that commit. The signing jobs take their
 # scripts and certificates from main, not from the tag.
 #
-# The jobs that hold credentials don't build: they sign what the build job
-# made, so none of Gradle's dependencies run where the credentials are. There
-# are no keystores or passwords in GitHub or on the runner.
+# The jobs that hold credentials don't build: they sign or upload what the
+# build job made, so none of Gradle's dependencies run where the credentials
+# are. Each has its own account that can do one thing: a signer per key,
+# app-distribute (App Distribution only) and the Play publisher (release
+# rights on this app only). There are no keystores, passwords or keys in
+# GitHub or on the runner.
 #
-# qa and prod are the same app and the same key: a qa build is a prerelease
-# testers update from in place. Each qa and prod run rebuilds the APK on a
-# second, fresh runner and checks the two are identical, the check F-Droid
-# makes, so a release F-Droid would reject fails here first.
+# Each prod run rebuilds the APK on a second, fresh runner and checks the two
+# are identical, the check F-Droid makes, so a release F-Droid would reject
+# fails here first. Play bundles take their version code from the run number
+# instead (-PplayVersionCode), so every main push can upload; F-Droid never
+# builds them.
 #
-# The values below are from `tofu output` in mobile-build-infra/build. They
-# aren't secrets: the Workload Identity bindings are what protect the keys.
+# The values below are from `tofu output` in mobile-build-infra (build/ and
+# bootstrap/). They aren't secrets: the Workload Identity bindings are what
+# protect the keys. A value that is still REPLACE_ME turns its job off with a
+# warning instead of failing the run.
 #
 # The first run for a key has no certificate to attach yet
 # (signing-certs/<key>.pem). That run makes it, signs with it and attaches
-# both to the run instead of publishing. Commit the certificate to main, then
-# delete and push the tag again (or push a new one).
+# it to the run instead of shipping. Commit it, then run again (for a tag,
+# delete and push the tag again, or push a new one).
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   workflow_run:
     workflows: [Build]
     types: [completed]
@@ -57,6 +70,21 @@ permissions:
 
 env:
   WIF_PROVIDER: projects/26387807765/locations/global/workloadIdentityPools/github/providers/github
+  # Firebase App Distribution, in the distribution project (bootstrap/
+  # outputs distribute_service_account; build/ output
+  # firebase_android_app_ids["carrier-pigeon"]). The project number is the
+  # second field of the app id.
+  DISTRIBUTOR: app-distribute@mobile-build-dist-hfe7uw.iam.gserviceaccount.com
+  FIREBASE_APP_ID: REPLACE_ME
+  TESTER_GROUP: carrier-pigeon-dev
+  # Google Play. The publisher account isn't in mobile-build-infra yet: a
+  # Play Console user with release rights on this app only and no Google
+  # Cloud roles, bound to qa|...release.yml@refs/heads/main (upload) and
+  # prod|...release.yml@refs/heads/main (promote).
+  PACKAGE: io.github.jakescott.carrierpigeon
+  PUBLISHER: REPLACE_ME
+  INTERNAL_TRACK: internal
+  PROD_TRACK: production
   # Google's PKCS#11 library for Cloud KMS, from its GitHub release. Pinned
   # by hash, and its signature is checked against Google's release key too.
   KMSP11_VERSION: "1.9"
@@ -83,6 +111,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       channel: ${{ steps.what.outputs.channel }}
+      environment: ${{ steps.what.outputs.environment }}
       sha: ${{ steps.what.outputs.sha }}
       tag: ${{ steps.what.outputs.tag }}
       version: ${{ steps.what.outputs.version }}
@@ -97,21 +126,28 @@ jobs:
           TAG: ${{ github.event.workflow_run.head_branch }}
           TAG_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [ "$GITHUB_REF" != refs/heads/main ]; then
-            echo "::error::Release runs only on main; the keys trust nothing else."
-            exit 1
-          fi
           if [ "$EVENT" = push ]; then
-            echo "channel=dev" >> "$GITHUB_OUTPUT"
-            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            case "$GITHUB_REF" in
+              refs/heads/dev)  channel=dev;      environment=dev ;;
+              refs/heads/main) channel=internal; environment=qa ;;
+              *) echo "::error::Release runs on dev and main only; the keys trust nothing else."; exit 1 ;;
+            esac
+            {
+              echo "channel=$channel"
+              echo "environment=$environment"
+              echo "sha=$GITHUB_SHA"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if [[ $TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Tag releases run from main only; the keys trust nothing else."
+            exit 1
+          fi
+          if [[ $TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             version=${BASH_REMATCH[1]}
-            channel=$([ -n "${BASH_REMATCH[2]}" ] && echo qa || echo prod)
           else
-            echo "::error::$TAG isn't a release tag: use vX.Y.Z for prod or vX.Y.Z-rc.N for qa."
+            echo "::error::$TAG isn't a release tag: use vX.Y.Z. (There are no rc tags: main goes to Play's internal track.)"
             exit 1
           fi
           # A branch can share a tag's name; make sure this really is the tag,
@@ -127,12 +163,13 @@ jobs:
             exit 1
           fi
           {
-            echo "channel=$channel"
+            echo "channel=prod"
+            echo "environment=prod"
             echo "sha=$TAG_SHA"
             echo "tag=$TAG"
             echo "version=$version"
           } >> "$GITHUB_OUTPUT"
-          echo "::notice title=Release::$TAG -> $channel"
+          echo "::notice title=Release::$TAG -> prod"
 
   build:
     needs: setup
@@ -141,6 +178,7 @@ jobs:
       CHANNEL: ${{ needs.setup.outputs.channel }}
     outputs:
       version: ${{ steps.version.outputs.version }}
+      code: ${{ steps.version.outputs.code }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -149,29 +187,32 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      # No Gradle cache for qa and prod: release builds start clean, as
+      # No Gradle cache outside dev: Play and prod builds start clean, as
       # F-Droid's do.
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-disabled: ${{ needs.setup.outputs.channel != 'dev' }}
 
-      # dev builds have their own package, so their version codes only need
-      # to grow among themselves. qa and prod take theirs from the source.
-      - name: Build (dev)
-        if: env.CHANNEL == 'dev'
-        run: ./gradlew --no-daemon --no-build-cache assembleDevRelease -PdevVersionCode=$((GITHUB_RUN_NUMBER + 1000))
-      - name: Build (prod flavor, for qa and prod)
-        if: env.CHANNEL != 'dev'
-        run: ./gradlew --no-daemon --no-build-cache assembleProdRelease bundleProdRelease
+      # dev builds have their own package, and Play bundles their own
+      # version-code range, so their codes only need to grow among
+      # themselves: this workflow's run number, offset. prod takes its code
+      # from the source.
+      - name: Build
+        run: |
+          case "$CHANNEL" in
+            dev)      ./gradlew --no-daemon --no-build-cache assembleDevRelease -PdevVersionCode=$((GITHUB_RUN_NUMBER + 1000)) ;;
+            internal) ./gradlew --no-daemon --no-build-cache bundleProdRelease -PplayVersionCode=$((GITHUB_RUN_NUMBER + 100000)) ;;
+            prod)     ./gradlew --no-daemon --no-build-cache assembleProdRelease ;;
+          esac
 
       - name: Collect the unsigned build
         run: |
           mkdir -p out
-          flavor=$([ "$CHANNEL" = dev ] && echo dev || echo prod)
-          cp "app/build/outputs/apk/$flavor/release/app-$flavor-release-unsigned.apk" out/
-          if [ "$CHANNEL" != dev ]; then
-            cp app/build/outputs/bundle/prodRelease/app-prod-release.aab out/
-          fi
+          case "$CHANNEL" in
+            dev)      cp app/build/outputs/apk/dev/release/app-dev-release-unsigned.apk out/ ;;
+            internal) cp app/build/outputs/bundle/prodRelease/app-prod-release.aab out/ ;;
+            prod)     cp app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk out/ ;;
+          esac
           sha256sum out/*
 
       - name: Version
@@ -180,8 +221,13 @@ jobs:
           TAG_VERSION: ${{ needs.setup.outputs.version }}
           TAG: ${{ needs.setup.outputs.tag }}
         run: |
-          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
-          version=$("$aapt2" dump badging out/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          if [ "$CHANNEL" = internal ]; then
+            version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
+            echo "code=$((GITHUB_RUN_NUMBER + 100000))" >> "$GITHUB_OUTPUT"
+          else
+            aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+            version=$("$aapt2" dump badging out/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           # F-Droid reads the version from the source at the tag, so the tag
           # and versionName must agree.
@@ -202,7 +248,7 @@ jobs:
   # with the first. verify checks the two APKs are identical.
   rebuild:
     needs: setup
-    if: needs.setup.outputs.channel != 'dev'
+    if: needs.setup.outputs.channel == 'prod'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -224,13 +270,15 @@ jobs:
           compression-level: 0
           retention-days: 3
 
-  # dev: the dev key. qa and prod: the release key, the one phones trust for
-  # APKs outside Play (F-Droid, GitHub releases). Scripts and certificates
-  # come from main (the default checkout), not from the tag.
+  # dev: the dev key. prod: the release key, the one phones trust for APKs
+  # outside Play (F-Droid, GitHub releases). Scripts and certificates come
+  # from the branch being built for dev, and from main (the default checkout)
+  # for a tag.
   sign-apk:
     needs: [setup, build]
+    if: needs.setup.outputs.channel != 'internal'
     runs-on: ubuntu-24.04
-    environment: ${{ needs.setup.outputs.channel }}
+    environment: ${{ needs.setup.outputs.environment }}
     permissions:
       contents: read
       id-token: write
@@ -257,7 +305,7 @@ jobs:
           echo "CERT=$cert" >> "$GITHUB_ENV"
           if [ ! -f "$cert" ]; then
             echo "first=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=New certificate::$cert doesn't exist yet. This run makes it and signs with it, but publishes nothing. Commit it to main (from the new-cert-$KEY_NAME artifact), then release again."
+            echo "::notice title=New certificate::$cert doesn't exist yet. This run makes it and signs with it, but ships nothing. Commit it (from the new-cert-$KEY_NAME artifact), then release again."
           fi
 
       # The library signs with the short-lived credentials file this writes
@@ -311,24 +359,123 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  # The bundle for Play, signed with the upload key. Play App Signing re-signs
-  # it with the key Google holds, so Play builds don't carry the release key.
-  sign-bundle:
-    needs: [setup, build]
-    if: needs.setup.outputs.channel != 'dev'
+  # dev builds to testers through Firebase App Distribution, as
+  # app-distribute, which can do nothing else.
+  distribute:
+    needs: [setup, build, sign-apk]
+    if: needs.setup.outputs.channel == 'dev' && !needs.sign-apk.outputs.first
     runs-on: ubuntu-24.04
-    environment: ${{ needs.setup.outputs.channel }}
+    environment: dev
     permissions:
       contents: read
       id-token: write
     env:
-      CHANNEL: ${{ needs.setup.outputs.channel }}
+      APK: signed/carrier-pigeon-dev-${{ needs.build.outputs.version }}.apk
+      # Through env, never pasted into the script: commit messages are text
+      # anyone with push access writes.
+      HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+    steps:
+      - name: Distribution is configured
+        id: configured
+        run: |
+          case "$FIREBASE_APP_ID" in
+            *REPLACE_ME*)
+              echo "::warning title=Not distributed::FIREBASE_APP_ID is still a placeholder. Fill it in in release.yml from \`tofu output firebase_android_app_ids\` in mobile-build-infra/build. The signed APK is in the signed-dev artifact."
+              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "ok=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.configured.outputs.ok == 'true'
+        with:
+          name: signed-dev
+          path: signed
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: steps.configured.outputs.ok == 'true'
+        id: auth
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DISTRIBUTOR }}
+          token_format: access_token
+      # App Distribution's REST API with curl and jq: no third-party action
+      # or npm package runs where the token is.
+      - name: Upload to App Distribution
+        if: steps.configured.outputs.ok == 'true'
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          api=https://firebaseappdistribution.googleapis.com
+          project_number=$(cut -d: -f2 <<<"$FIREBASE_APP_ID")
+          app="projects/$project_number/apps/$FIREBASE_APP_ID"
+          auth=(--header "Authorization: Bearer $TOKEN")
+          call() { curl --silent --show-error --fail-with-body "${auth[@]}" "$@"; }
+
+          test -f "$APK"
+          op=$(call --request POST \
+            --header "X-Goog-Upload-Protocol: raw" \
+            --header "X-Goog-Upload-File-Name: $(basename "$APK")" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary "@$APK" \
+            "$api/upload/v1/$app/releases:upload" | jq -r .name)
+          echo "Upload operation: $op"
+
+          # Processing usually takes seconds; give it five minutes.
+          for _ in $(seq 60); do
+            result=$(call "$api/v1/$op")
+            [ "$(jq -r '.done // false' <<<"$result")" = true ] && break
+            sleep 5
+          done
+          if [ "$(jq -r '.done // false' <<<"$result")" != true ]; then
+            echo "::error title=Upload not processed::App Distribution didn't finish processing the APK in time."
+            exit 1
+          fi
+          if jq -e .error <<<"$result" >/dev/null; then
+            echo "::error title=Upload failed::$(jq -c .error <<<"$result")"
+            exit 1
+          fi
+          release=$(jq -r .response.release.name <<<"$result")
+          echo "$(jq -r '.response.result // "uploaded"' <<<"$result"): $release"
+
+          subject=${HEAD_MESSAGE%%$'\n'*}
+          notes="${subject:-Manual run} (${GITHUB_SHA::7})"
+          details=$(call --request PATCH --header "Content-Type: application/json" \
+            --data "$(jq -n --arg t "$notes" '{releaseNotes: {text: $t}}')" \
+            "$api/v1/$release?updateMask=release_notes.text")
+
+          call --request POST --header "Content-Type: application/json" \
+            --data "$(jq -n --arg g "$TESTER_GROUP" '{groupAliases: [$g]}')" \
+            "$api/v1/$release:distribute" >/dev/null
+
+          echo "Distributed $(jq -r .displayVersion <<<"$details") ($(jq -r .buildVersion <<<"$details")) to $TESTER_GROUP: $notes"
+          # Not binaryDownloadUri: it downloads the APK without signing in, and
+          # run logs are readable by anyone who can read the repository.
+          {
+            echo "### Firebase App Distribution"
+            echo "Release $(jq -r .displayVersion <<<"$details") to \`$TESTER_GROUP\`: $notes"
+            echo
+            echo "Testers: $(jq -r '.testingUri // "n/a"' <<<"$details")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The bundle for Play, signed with the upload key. Play App Signing re-signs
+  # it with the key Google holds, so Play builds don't carry the release key.
+  sign-bundle:
+    needs: [setup, build]
+    if: needs.setup.outputs.channel == 'internal'
+    runs-on: ubuntu-24.04
+    environment: qa
+    permissions:
+      contents: read
+      id-token: write
+    env:
       KMS_KEY: projects/mobile-build-hfe7uw/locations/us-central1/keyRings/carrier-pigeon-play/cryptoKeys/carrier-pigeon-play
       SIGNER: carrier-pigeon-play-sign@mobile-build-hfe7uw.iam.gserviceaccount.com
       # jarsigner is told the algorithm, so the play key stays
       # RSA_SIGN_PKCS1_4096_SHA256.
       KMS_DIGEST: sha256
       CERT: signing-certs/play.pem
+      AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}.aab
+    outputs:
+      first: ${{ steps.first.outputs.first }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -340,7 +487,7 @@ jobs:
         run: |
           if [ ! -f "$CERT" ]; then
             echo "first=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=New certificate::$CERT doesn't exist yet. This run makes it; commit it to main from the bundle-$CHANNEL artifact. Upload that first bundle to Play Console by hand."
+            echo "::notice title=New certificate::$CERT doesn't exist yet. This run makes it; commit it from the bundle-internal artifact. Upload that first bundle to Play Console by hand when you create the app there."
           fi
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
@@ -360,21 +507,83 @@ jobs:
       - name: Sign the bundle
         run: |
           mkdir -p signed
-          cp out/app-prod-release.aab "signed/carrier-pigeon-$CHANNEL-${{ needs.build.outputs.version }}.aab"
-          scripts/kms_sign.sh aab signed/*.aab "$CERT"
+          cp out/app-prod-release.aab "$AAB"
+          scripts/kms_sign.sh aab "$AAB" "$CERT"
           [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bundle-${{ env.CHANNEL }}
+          name: bundle-internal
           path: signed/
           if-no-files-found: error
           compression-level: 0
+
+  # Each main build becomes a release on Play's internal track. Its name ends
+  # with the commit, which promote looks for.
+  upload-internal:
+    needs: [setup, build, sign-bundle]
+    if: needs.setup.outputs.channel == 'internal' && !needs.sign-bundle.outputs.first
+    runs-on: ubuntu-24.04
+    environment: qa
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}.aab
+      RELEASE_NAME: ${{ needs.build.outputs.version }} (${{ needs.build.outputs.code }}) ${{ needs.setup.outputs.sha }}
+    steps:
+      - name: Publishing is configured
+        id: configured
+        run: |
+          case "$PUBLISHER" in
+            *REPLACE_ME*)
+              echo "::warning title=Not uploaded to Play::PUBLISHER is still a placeholder (no Play publisher account yet). The signed bundle is in the bundle-internal artifact."
+              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "ok=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.configured.outputs.ok == 'true'
+        with:
+          name: bundle-internal
+          path: signed
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: steps.configured.outputs.ok == 'true'
+        id: auth
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.PUBLISHER }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+      # The Play Developer API with curl and jq: no third-party action runs
+      # where the token is.
+      - name: Upload to the internal track
+        if: steps.configured.outputs.ok == 'true'
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE"
+          upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PACKAGE"
+          auth=(--header "Authorization: Bearer $TOKEN")
+          call() { curl --silent --show-error --fail-with-body "${auth[@]}" "$@"; }
+
+          test -f "$AAB"
+          edit=$(call --request POST "$api/edits" | jq -r .id)
+          code=$(call --request POST --header "Content-Type: application/octet-stream" \
+            --data-binary "@$AAB" "$upload/edits/$edit/bundles?uploadType=media" | jq -r .versionCode)
+          echo "Uploaded version code $code"
+          call --request PUT --header "Content-Type: application/json" \
+            --data "$(jq -n --arg n "$RELEASE_NAME" --arg c "$code" \
+              '{releases: [{name: $n, versionCodes: [$c], status: "completed"}]}')" \
+            "$api/edits/$edit/tracks/$INTERNAL_TRACK" >/dev/null
+          call --request POST "$api/edits/$edit:commit" >/dev/null
+          echo "### Google Play" >> "$GITHUB_STEP_SUMMARY"
+          echo "$RELEASE_NAME on \`$INTERNAL_TRACK\`" >> "$GITHUB_STEP_SUMMARY"
 
   # What F-Droid will check, before we publish: the independent rebuild is
   # byte-for-byte the build we signed, and our signature copies onto it.
   verify:
     needs: [setup, build, rebuild, sign-apk]
-    if: needs.setup.outputs.channel != 'dev'
+    if: needs.setup.outputs.channel == 'prod'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -387,7 +596,7 @@ jobs:
           path: rebuild
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: signed-${{ needs.setup.outputs.channel }}
+          name: signed-prod
           path: signed
       - name: The rebuild is identical
         run: |
@@ -403,26 +612,83 @@ jobs:
           apksigcopier compare --unsigned signed/*.apk rebuild/app-prod-release-unsigned.apk
           echo "Reproducible: the signed APK is the rebuild plus our signature."
 
-  # The GitHub release for the pushed tag: a prerelease for qa.
+  # The GitHub release for the pushed tag; F-Droid builds the tag.
   publish:
-    needs: [setup, build, sign-apk, sign-bundle, verify]
-    if: needs.setup.outputs.channel != 'dev' && !needs.sign-apk.outputs.first
+    needs: [setup, build, sign-apk, verify]
+    if: needs.setup.outputs.channel == 'prod' && !needs.sign-apk.outputs.first
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: signed-${{ needs.setup.outputs.channel }}
+          name: signed-prod
           path: signed
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.setup.outputs.tag }}
-          CHANNEL: ${{ needs.setup.outputs.channel }}
         run: |
-          prerelease=$([ "$CHANNEL" = qa ] && echo --prerelease || true)
           gh release create "$TAG" signed/*.apk \
             --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Carrier Pigeon ${TAG#v}" \
-            --generate-notes $prerelease
+            --generate-notes
+
+  # The internal Play release main built from the tagged commit, promoted to
+  # production unchanged. Runs after the GitHub release, so a tag that fails
+  # the F-Droid checks reaches neither.
+  promote:
+    needs: [setup, publish]
+    if: needs.setup.outputs.channel == 'prod'
+    runs-on: ubuntu-24.04
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Publishing is configured
+        id: configured
+        run: |
+          case "$PUBLISHER" in
+            *REPLACE_ME*)
+              echo "::warning title=Not promoted on Play::PUBLISHER is still a placeholder (no Play publisher account yet)."
+              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "ok=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: steps.configured.outputs.ok == 'true'
+        id: auth
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.PUBLISHER }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+      - name: Promote the internal release to production
+        if: steps.configured.outputs.ok == 'true'
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+          TAG: ${{ needs.setup.outputs.tag }}
+          SHA: ${{ needs.setup.outputs.sha }}
+        run: |
+          set -euo pipefail
+          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE"
+          auth=(--header "Authorization: Bearer $TOKEN")
+          call() { curl --silent --show-error --fail-with-body "${auth[@]}" "$@"; }
+
+          edit=$(call --request POST "$api/edits" | jq -r .id)
+          internal=$(call "$api/edits/$edit/tracks/$INTERNAL_TRACK")
+          release=$(jq -c --arg sha "$SHA" \
+            '[.releases[]? | select(.status == "completed" and ((.name // "") | endswith($sha)))][0] // empty' <<<"$internal")
+          if [ -z "$release" ]; then
+            call --request DELETE "$api/edits/$edit" >/dev/null || true
+            echo "::error title=Nothing to promote::No completed release on $INTERNAL_TRACK was built from $SHA ($TAG). Tag a commit main has built and uploaded."
+            exit 1
+          fi
+          echo "Promoting $(jq -r .name <<<"$release") as $TAG"
+          call --request PUT --header "Content-Type: application/json" \
+            --data "$(jq -n --argjson r "$release" --arg tag "$TAG" \
+              '{releases: [{name: $tag, versionCodes: $r.versionCodes, status: "completed"}]}')" \
+            "$api/edits/$edit/tracks/$PROD_TRACK" >/dev/null
+          call --request POST "$api/edits/$edit:commit" >/dev/null
+          echo "### Google Play" >> "$GITHUB_STEP_SUMMARY"
+          echo "$TAG ($(jq -r '.versionCodes | join(",")' <<<"$release")) promoted to \`$PROD_TRACK\`" >> "$GITHUB_STEP_SUMMARY"

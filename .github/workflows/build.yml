@@ -3,11 +3,12 @@ name: Build
 # Lint and debug builds, with no credentials. Runs on pull requests and on
 # pushes to dev, main and v* tags.
 #
-# Pushes to dev: the debug APKs are the sideload build. They are signed with
-# the Android debug key and have their own package (.debug, "Carrier Pigeon
-# Debug"), so they install beside the insiders and release builds.
+# The debug APKs are a sideload build, signed with the Android debug key, with
+# their own package (.debug, "Carrier Pigeon Debug"), so they install beside
+# the dev (Firebase) and release builds. Signed dev builds come from
+# release.yml.
 #
-# A v* tag's run finishing is also what starts a qa or prod release:
+# A v* tag's run finishing is also what starts a prod release:
 # release.yml, as committed on main, picks it up (see that file).
 
 on:
