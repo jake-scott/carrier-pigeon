@@ -4,7 +4,6 @@ package io.github.jakescott.carrierpigeon.data
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
-import android.telephony.PhoneStateListener
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyDisplayInfo
@@ -107,20 +106,20 @@ object DisplayInfoTracker {
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION") // PhoneStateListener is the only way on Android 11.
     private fun registerLegacy(app: Context, tm: TelephonyManager, deliver: (TelephonyDisplayInfo) -> Unit): Any {
-        val listener = object : PhoneStateListener(app.mainExecutor) {
+        val listener = object : android.telephony.PhoneStateListener(app.mainExecutor) {
             override fun onDisplayInfoChanged(telephonyDisplayInfo: TelephonyDisplayInfo) = deliver(telephonyDisplayInfo)
         }
-        tm.listen(listener, PhoneStateListener.LISTEN_DISPLAY_INFO_CHANGED)
+        tm.listen(listener, android.telephony.PhoneStateListener.LISTEN_DISPLAY_INFO_CHANGED)
         return listener
     }
 
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION") // PhoneStateListener, for Android 11.
     private fun unregister(tm: TelephonyManager, listener: Any) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && listener is TelephonyCallback) {
                 tm.unregisterTelephonyCallback(listener)
-            } else if (listener is PhoneStateListener) {
-                tm.listen(listener, PhoneStateListener.LISTEN_NONE)
+            } else if (listener is android.telephony.PhoneStateListener) {
+                tm.listen(listener, android.telephony.PhoneStateListener.LISTEN_NONE)
             }
         } catch (e: RuntimeException) {
             Log.w(TAG, "unregister failed", e)

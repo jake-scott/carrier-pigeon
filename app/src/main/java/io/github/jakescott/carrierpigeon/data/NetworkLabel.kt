@@ -54,6 +54,8 @@ data class NetworkLabel(val badge: String, val detail: String? = null) {
             return generation(rawType)?.let { NetworkLabel(it) }
         }
 
+        // The CDMA, EVDO, eHRPD, 1xRTT and iDEN constants are deprecated, but phones can still report them.
+        @Suppress("DEPRECATION")
         private fun generation(rawType: Int): String? = when (rawType) {
             TelephonyManager.NETWORK_TYPE_HSPAP,
             TelephonyManager.NETWORK_TYPE_HSPA,
