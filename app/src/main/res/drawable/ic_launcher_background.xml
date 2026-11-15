@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Launcher icon background: soft sky with two clouds. -->
+<!-- Launcher icon background: deep evening-blue sky with two faint clouds. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -14,17 +14,17 @@
                 android:startY="0"
                 android:endX="0"
                 android:endY="108">
-                <item android:offset="0" android:color="#FFBFE8FF" />
-                <item android:offset="1" android:color="#FF6FBDF2" />
+                <item android:offset="0" android:color="#FF3B5291" />
+                <item android:offset="1" android:color="#FF1C2650" />
             </gradient>
         </aapt:attr>
     </path>
     <path
         android:fillColor="#FFFFFF"
-        android:fillAlpha="0.55"
+        android:fillAlpha="0.16"
         android:pathData="M14,90 Q14,81 23,82 Q27,74 36,77 Q43,74 47,81 Q54,81 54,90 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:fillAlpha="0.55"
+        android:fillAlpha="0.16"
         android:pathData="M62,94 Q62,87 70,87 Q74,80 82,83 Q90,81 92,88 Q100,88 100,94 Z" />
 </vector>
