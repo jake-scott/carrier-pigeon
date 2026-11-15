@@ -256,13 +256,18 @@ private fun MainScreen(accessRequests: Int) {
 private fun CurrentSimCard(state: DataSimState?, showDetail: Boolean) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Mobile data is on", style = MaterialTheme.typography.labelLarge)
-            Text(state?.label ?: "…", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                if (state?.cellularUnavailable == true) "Mobile data" else "Mobile data is on",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(state?.headline ?: "…", style = MaterialTheme.typography.headlineSmall)
             state?.status?.text?.let { Text("$it: no mobile data right now", color = MaterialTheme.colorScheme.error) }
             if (state != null) {
                 Text("Active sub ${state.activeSubId} · default sub ${state.defaultSubId} · network sub ${state.networkSubId}")
                 Text("Internet via: ${state.accessLine}")
-                Text(if (state.isTemporarySwitch) "Backup SIM (not your default data SIM)" else "Your default data SIM")
+                if (!state.cellularUnavailable) {
+                    Text(if (state.isTemporarySwitch) "Backup SIM (not your default data SIM)" else "Your default data SIM")
+                }
                 state.carrierName?.let { Text("Carrier: $it") }
                 state.networkType?.let { NetworkLine(NetworkLabel(it, state.networkDetail), showDetail) }
             }
