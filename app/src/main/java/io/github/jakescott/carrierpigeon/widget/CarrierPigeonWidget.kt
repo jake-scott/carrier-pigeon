@@ -97,7 +97,7 @@ private fun WidgetContent(state: DataSimState?, showDetail: Boolean) {
                 // Top line: the carrier carrying data, marked as the default data SIM or a backup.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = state?.label ?: "Tap to load",
+                        text = state?.headline ?: "Tap to load",
                         maxLines = 1,
                         style = TextStyle(
                             color = GlanceTheme.colors.onSurface,
@@ -149,7 +149,7 @@ private fun WidgetContent(state: DataSimState?, showDetail: Boolean) {
 
 /** "default" when data is on the SIM chosen in Settings, "backup" when the phone has moved it to another SIM. */
 private fun marker(s: DataSimState?, compact: Boolean): String? {
-    if (s == null || !s.hasActiveSub || s.defaultSubId < 0) return null
+    if (s == null || !s.hasActiveSub || s.defaultSubId < 0 || s.cellularUnavailable) return null
     return when {
         s.isTemporarySwitch -> if (compact) " ⇄" else "  backup"
         else -> if (compact) " ★" else "  default"
