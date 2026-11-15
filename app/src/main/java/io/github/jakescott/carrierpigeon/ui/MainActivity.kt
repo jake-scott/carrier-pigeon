@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -38,6 +40,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -150,10 +153,19 @@ private fun MainScreen(accessRequests: Int) {
             }
         }
     }
+    // Android labels this permission "make and manage phone calls", so explain what it is really
+    // for before every prompt. The dialog's Continue button is what shows the system prompt.
+    var showRationale by rememberSaveable { mutableStateOf(false) }
     // Ask on the first ever open, and whenever the widget sends us here to ask.
     LaunchedEffect(accessRequests) {
         if (resolver.hasPhoneStatePermission()) return@LaunchedEffect
-        if (accessRequests > 0 || !settings.askedForPhoneAccess()) requestPhoneAccess()
+        if (accessRequests > 0 || !settings.askedForPhoneAccess()) showRationale = true
+    }
+    if (showRationale) {
+        PhoneAccessRationale(
+            onContinue = { showRationale = false; requestPhoneAccess() },
+            onDismiss = { showRationale = false },
+        )
     }
 
     LaunchedEffect(state, logVersion) {
@@ -176,8 +188,13 @@ private fun MainScreen(accessRequests: Int) {
                 item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Allow phone access to show your SIM names. Without it the widget can only show the carrier name stored on the SIM.")
-                            Button(onClick = requestPhoneAccess) {
+                            Text("Allow phone access to show your SIM names and network type. Without it the widget can only show the carrier name stored on the SIM.")
+                            Text(
+                                "Carrier Pigeon only reads SIM and network info. It never makes or manages calls.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Button(onClick = { showRationale = true }) {
                                 Text("Allow")
                             }
                         }
@@ -250,6 +267,23 @@ private fun MainScreen(accessRequests: Int) {
             }
         }
     }
+}
+
+/** Shown before the system prompt, which words this permission as "make and manage phone calls". */
+@Composable
+private fun PhoneAccessRationale(onContinue: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Why phone access?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Carrier Pigeon needs it to read your SIM names and which network each SIM is on (4G, 5G and so on), so the widget can show them.")
+                Text("Android groups this with calls, so its prompt will say \"make and manage phone calls\". Carrier Pigeon never makes, answers or manages calls, and it doesn't read your call log or contacts.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onContinue) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+    )
 }
 
 @Composable
