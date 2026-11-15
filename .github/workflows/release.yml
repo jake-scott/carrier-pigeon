@@ -609,7 +609,9 @@ jobs:
       id-token: write
     env:
       AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}.aab
-      RELEASE_NAME: ${{ needs.build.outputs.version }} (${{ needs.build.outputs.code }}) ${{ needs.setup.outputs.sha }}
+      # Play allows 50 characters, so the commit is abbreviated in the step.
+      RELEASE_NAME_PREFIX: ${{ needs.build.outputs.version }} (${{ needs.build.outputs.code }})
+      RELEASE_SHA: ${{ needs.setup.outputs.sha }}
     steps:
       - name: Google Play is configured
         id: configured
@@ -652,6 +654,7 @@ jobs:
           TOKEN: ${{ steps.auth.outputs.access_token }}
         run: |
           set -euo pipefail
+          RELEASE_NAME="$RELEASE_NAME_PREFIX ${RELEASE_SHA::7}"
           api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PLAY_PACKAGE"
           upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PLAY_PACKAGE"
           auth=(--header "Authorization: Bearer $TOKEN")
