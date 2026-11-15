@@ -16,7 +16,7 @@ android {
         // and Play bundles override the code, with -PdevVersionCode and
         // -PplayVersionCode (release.yml).
         versionCode = 1
-        versionName = "0.1.0-poc"
+        versionName = "0.1.0"
     }
 
     // dev is the Firebase testers' channel: its own package name and launcher
