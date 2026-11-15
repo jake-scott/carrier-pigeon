@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "io.github.jakescott.carrierpigeon"
+    namespace = "dev.jakethesnake.carrierpigeon"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "io.github.jakescott.carrierpigeon"
+        applicationId = "dev.jakethesnake.carrierpigeon"
         minSdk = 30
         targetSdk = 36
         // Release APKs (and F-Droid, which rebuilds them from the tag) take
@@ -46,6 +46,9 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // Pick "English (XA)" (long, accented text) or "Arabic (XB)" (right to left) in the
+            // system language settings to check layouts without a translation.
+            isPseudoLocalesEnabled = true
         }
         release {
             isMinifyEnabled = true
@@ -68,6 +71,38 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    // Lists the languages in values-*/ for Android 13+'s per-app language setting. The default
+    // values/ folder is en-US (res/resources.properties). Only add a values-xx folder once that
+    // language is fully translated and reviewed, because it shows up in the setting.
+    androidResources {
+        generateLocaleConfig = true
+    }
+
+    lint {
+        // Translation and right-to-left mistakes fail the build. Compose Text("...") literals
+        // aren't covered by HardcodedText; scripts/check_hardcoded_strings.sh catches those.
+        error += listOf(
+            "MissingTranslation",
+            "ExtraTranslation",
+            "Untranslatable",
+            "StringFormatInvalid",
+            "StringFormatCount",
+            "StringFormatMatches",
+            "MissingQuantity",
+            "ImpliedQuantity",
+            "UnusedQuantity",
+            "HardcodedText",
+            "SetTextI18n",
+            "RtlHardcoded",
+            "RtlSymmetry",
+        )
+    }
+
+    testOptions {
+        // Android classes in unit tests return defaults instead of throwing "Stub!".
+        unitTests.isReturnDefaultValues = true
     }
 
     // Keep F-Droid reproducible builds possible: no dependency metadata blob in
@@ -93,4 +128,6 @@ dependencies {
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
 }

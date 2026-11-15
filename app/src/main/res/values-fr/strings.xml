@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brouillon de traduction : à faire relire par une personne francophone avant publication. -->
+<resources>
+    <string name="widget_name">SIM données</string>
+    <string name="widget_description">Indique quelle SIM transporte les données mobiles en ce moment</string>
+
+    <string name="menu_open">Menu</string>
+    <string name="menu_refresh">Actualiser</string>
+    <string name="menu_switch_log">Journal des basculements</string>
+    <string name="menu_share_log">Partager le journal</string>
+    <string name="menu_clear_log">Effacer le journal</string>
+    <string name="menu_language">Langue</string>
+
+    <string name="home_active_sims">SIM actives</string>
+    <string name="home_terms_hint">Touchez un terme comme LTE ou 5G pour voir ce qu’il signifie</string>
+    <string name="home_no_sims">Aucune SIM active</string>
+    <string name="home_no_data_sim">Aucune SIM ne transporte les données mobiles</string>
+    <string name="home_show_detail">Afficher le détail du réseau</string>
+
+    <string name="clear_log_title">Effacer le journal des basculements ?</string>
+    <string name="clear_log_body">Cela supprime l’historique des basculements de SIM enregistré sur ce téléphone.</string>
+    <string name="log_title">Journal des basculements</string>
+    <string name="log_empty">Rien n’a encore été enregistré.</string>
+    <string name="log_share_subject">Journal des basculements Carrier Pigeon</string>
+    <string name="log_share_chooser">Partager le journal</string>
+
+    <string name="action_clear">Effacer</string>
+    <string name="action_cancel">Annuler</string>
+    <string name="action_close">Fermer</string>
+    <string name="action_share">Partager</string>
+    <string name="action_allow">Autoriser</string>
+    <string name="action_continue">Continuer</string>
+    <string name="action_not_now">Plus tard</string>
+    <string name="action_got_it">J’ai compris</string>
+
+    <string name="phone_card_body">Autorisez l’accès au téléphone pour voir toutes vos SIM, leur nom et leur type de réseau. Sans cela, l’application et le widget ne peuvent afficher que le nom de l’opérateur enregistré sur la SIM de données.</string>
+    <string name="phone_card_note">Carrier Pigeon lit uniquement les informations de SIM et de réseau. Il ne passe et ne gère jamais d’appels.</string>
+    <string name="phone_rationale_title">Pourquoi l’accès au téléphone ?</string>
+    <string name="phone_rationale_body">Carrier Pigeon en a besoin pour lire le nom de vos SIM et le réseau utilisé par chacune (4G, 5G, etc.), afin que le widget puisse les afficher.</string>
+    <string name="phone_rationale_calls">Android regroupe cette autorisation avec les appels : sa demande indiquera donc « passer et gérer des appels téléphoniques ». Carrier Pigeon ne passe, ne prend et ne gère jamais d’appels, et ne lit ni votre journal d’appels ni vos contacts.</string>
+    <string name="location_rationale_title">Pourquoi l’accès à la position ?</string>
+    <string name="location_rationale_body">Android considère le nom de votre réseau Wi-Fi comme une information de localisation : il n’indique donc le réseau auquel vous êtes connecté qu’aux applications ayant accès à la position.</string>
+    <string name="location_rationale_precise">Carrier Pigeon s’en sert uniquement pour afficher le nom du Wi-Fi. Il ne suit, n’enregistre et ne partage jamais votre position. Choisissez « Précise » : Android masque le nom aux applications qui n’ont qu’une position approximative.</string>
+
+    <string name="headline_no_internet">Pas d’internet</string>
+    <string name="airplane_mode_on">Le mode Avion est activé</string>
+    <string name="headline_via_wifi">Internet via <annotation term="wifi">Wi-Fi</annotation></string>
+    <string name="headline_via_cellular">Internet via le <annotation term="cellular">réseau mobile</annotation></string>
+    <string name="headline_via_ethernet">Internet via Ethernet</string>
+    <string name="headline_via_bluetooth">Internet via Bluetooth</string>
+    <string name="headline_via_usb">Internet via USB</string>
+    <string name="headline_connected">Internet connecté</string>
+
+    <string name="access_mobile_data">Données mobiles</string>
+    <string name="access_connected">Connecté</string>
+    <string name="access_none">Pas de données</string>
+
+    <string name="status_airplane_mode">Mode Avion</string>
+    <string name="status_data_off">Données mobiles désactivées</string>
+    <string name="status_no_service">Aucun service</string>
+
+    <string name="sim_slot">SIM %1$d</string>
+    <string name="sim_generic">SIM</string>
+    <string name="sim_sub_id">SIM n° %1$d</string>
+    <string name="sim_no_data_sim">Aucune SIM de données</string>
+    <string name="sim_tag_mobile_data">Données mobiles</string>
+    <string name="sim_tag_standby">En attente</string>
+    <string name="sim_no_network">Aucun réseau</string>
+    <string name="sim_problem">%1$s : pas de données mobiles pour le moment</string>
+    <string name="sim_internet_via">Internet via : %1$s</string>
+    <string name="sim_default_data">Votre SIM de données par défaut</string>
+    <string name="sim_backup_data">SIM de secours : les données ont été transférées ici depuis votre SIM par défaut</string>
+    <string name="sim_default_data_elsewhere">Votre SIM de données par défaut (les données passent par l’autre SIM pour le moment)</string>
+    <string name="sim_subscription">Abonnement %1$d</string>
+
+    <string name="wifi_tag_internet">Internet</string>
+    <string name="wifi_off_airplane">Pas de Wi-Fi : désactivé en mode Avion</string>
+    <string name="wifi_off">Pas de Wi-Fi : le Wi-Fi est désactivé</string>
+    <string name="wifi_disconnected">Aucune connexion Wi-Fi</string>
+    <string name="wifi_name_hidden">Nom du réseau masqué</string>
+    <string name="wifi_name_needs_location">Android n’affiche le nom qu’aux applications ayant accès à la position.</string>
+    <string name="wifi_name_location_off">Activez Localisation dans les réglages rapides pour voir le nom du réseau.</string>
+    <string name="wifi_security">Sécurité : %1$s</string>
+    <string name="wifi_link_speed_both">Débit de la liaison : %1$d Mbps en réception, %2$d Mbps en émission</string>
+    <string name="wifi_link_speed_down">Débit de la liaison : %1$d Mbps en réception</string>
+    <string name="wifi_link_speed_up">Débit de la liaison : %1$d Mbps en émission</string>
+    <string name="wifi_max_speed">Max. %1$d Mbps</string>
+    <string name="wifi_signal">Signal %1$d dBm</string>
+    <string name="wifi_band">%1$s GHz</string>
+
+    <string name="widget_tap_to_load">Touchez pour charger</string>
+    <string name="widget_tap_to_allow">Touchez pour autoriser l’accès au téléphone</string>
+    <string name="widget_tap_to_allow_short">Touchez pour autoriser</string>
+    <string name="widget_no_cellular">Pas de réseau mobile</string>
+    <string name="widget_marker_default">par défaut</string>
+    <string name="widget_marker_backup">secours</string>
+</resources>

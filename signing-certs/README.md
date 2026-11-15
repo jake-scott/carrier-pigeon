@@ -7,7 +7,7 @@ F-Droid and Play know the app by them.
 
 | File | Key | Signs |
 | --- | --- | --- |
-| `dev.pem` | `carrier-pigeon-dev` | dev channel APKs (`io.github.jakescott.carrierpigeon.dev`), on Firebase App Distribution |
+| `dev.pem` | `carrier-pigeon-dev` | dev channel APKs (`dev.jakethesnake.carrierpigeon.dev`), on Firebase App Distribution |
 | `release.pem` | `carrier-pigeon-release` | prod APKs: GitHub releases and F-Droid |
 | `play.pem` | `carrier-pigeon-play` | bundles uploaded to Play from main (upload key only) |
 
