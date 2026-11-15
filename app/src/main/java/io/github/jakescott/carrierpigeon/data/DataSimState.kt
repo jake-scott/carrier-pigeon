@@ -54,7 +54,21 @@ data class DataSimState(
     /** True when data is going over the data SIM, so [networkDetail] describes the [access] in use. */
     val accessIsCellular: Boolean get() = networkType != null && access == networkType
 
-    /** Best short label for the widget. */
+    /** True when the data SIM can't carry data, so the carrier name would mislead. */
+    val cellularUnavailable: Boolean get() = status != DataStatus.OK
+
+    /**
+     * Top line of the widget and the app's current-SIM card: the carrier carrying data, or why
+     * there is none ("No cellular" in airplane mode or without service, "Mobile data off").
+     */
+    val headline: String
+        get() = when (status) {
+            DataStatus.AIRPLANE_MODE, DataStatus.NO_SERVICE -> "No cellular"
+            DataStatus.DATA_OFF -> "Mobile data off"
+            DataStatus.OK -> label
+        }
+
+    /** Best short label for the data SIM, regardless of whether it can carry data. */
     val label: String
         get() {
             val name = displayName

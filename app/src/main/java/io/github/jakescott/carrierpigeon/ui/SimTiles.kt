@@ -116,11 +116,14 @@ fun SimTile(sim: SimTileModel, showDetail: Boolean, onTerm: (Term) -> Unit, modi
             }
             if (sim.isData) {
                 sim.internetVia?.let { LabelledTerms("Internet via", it, onTerm) }
-                Text(
-                    if (sim.isDefaultData) "Your default data SIM" else "Backup SIM: data moved here from your default SIM",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // When data can't flow (airplane mode, no service) default/backup would mislead.
+                if (sim.problem == null) {
+                    Text(
+                        if (sim.isDefaultData) "Your default data SIM" else "Backup SIM: data moved here from your default SIM",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             } else if (sim.isDefaultData) {
                 Text(
                     "Your default data SIM (data is on the other SIM for now)",

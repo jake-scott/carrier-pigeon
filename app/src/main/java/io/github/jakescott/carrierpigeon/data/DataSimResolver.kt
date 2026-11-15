@@ -63,9 +63,10 @@ class DataSimResolver(private val context: Context) {
         val vpn = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
         // A VPN's capabilities normally carry its underlying transports too; if not, find the
         // physical network it is likely running over.
-        val physical = if (vpn && !caps.hasPhysicalTransport()) underlyingCapabilities(cm) else caps
+        // A VPN with no physical network under it (e.g. airplane mode with Wi-Fi off) is not connectivity.
+        val physical = (if (vpn && !caps.hasPhysicalTransport()) underlyingCapabilities(cm) else caps)
+            ?: return NO_DATA to false
         val label = when {
-            physical == null -> if (vpn) "VPN" else NO_DATA
             physical.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
             physical.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
             physical.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> cellularType ?: "Mobile data"
