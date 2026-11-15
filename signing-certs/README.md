@@ -7,9 +7,9 @@ F-Droid and Play know the app by them.
 
 | File | Key | Signs |
 | --- | --- | --- |
-| `dev.pem` | `carrier-pigeon-dev` | dev channel APKs (`io.github.jakescott.carrierpigeon.dev`) |
-| `release.pem` | `carrier-pigeon-release` | qa and prod APKs: GitHub releases and F-Droid |
-| `play.pem` | `carrier-pigeon-play` | qa and prod bundles uploaded to Play (upload key only) |
+| `dev.pem` | `carrier-pigeon-dev` | dev channel APKs (`io.github.jakescott.carrierpigeon.dev`), on Firebase App Distribution |
+| `release.pem` | `carrier-pigeon-release` | prod APKs: GitHub releases and F-Droid |
+| `play.pem` | `carrier-pigeon-play` | bundles uploaded to Play from main (upload key only) |
 
 The first `release.yml` run for a key makes its certificate and attaches it
 to the run. Commit it here, then run again. Never replace `release.pem` once

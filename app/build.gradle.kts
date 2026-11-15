@@ -12,18 +12,18 @@ android {
         applicationId = "io.github.jakescott.carrierpigeon"
         minSdk = 30
         targetSdk = 36
-        // qa and prod builds (and F-Droid, which rebuilds them from the tag)
-        // take these from the source, so a release is reproducible. Only dev
-        // builds override the code, with -PdevVersionCode (release.yml).
+        // Release APKs (and F-Droid, which rebuilds them from the tag) take
+        // these from the source, so a release is reproducible. Only dev APKs
+        // and Play bundles override the code, with -PdevVersionCode and
+        // -PplayVersionCode (release.yml).
         versionCode = 1
         versionName = "0.1.0-poc"
     }
 
-    // dev is the internal channel: its own package name and launcher label,
-    // signed with the dev key, so it installs beside the real app and can
-    // never be updated over it. prod is what qa testers, F-Droid, GitHub
-    // releases and Play get (qa is a prerelease of the same app, signed with
-    // the same key). See docs/signing.md.
+    // dev is the Firebase testers' channel: its own package name and launcher
+    // label, signed with the dev key, so it installs beside the real app and
+    // can never be updated over it. prod is what Play (internal track, then
+    // production), F-Droid and GitHub releases get. See docs/signing.md.
     flavorDimensions += "channel"
     productFlavors {
         create("dev") {
@@ -34,13 +34,16 @@ android {
         }
         create("prod") {
             dimension = "channel"
+            // Play bundles from main only. F-Droid never builds them, so the
+            // release APK keeps the code above.
+            providers.gradleProperty("playVersionCode").orNull?.let { versionCode = it.toInt() }
         }
     }
 
     buildTypes {
-        // Debug builds (the sideload artifact from pushes to dev) get their
-        // own package too, signed with the throwaway debug key, so they
-        // install beside the insiders and release builds.
+        // Debug builds (build.yml's sideload artifact) get their own package
+        // too, signed with the throwaway debug key, so they install beside
+        // the dev and release builds.
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
