@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network detail lines (shown after the badge, e.g. "5G NSA  LTE + NR") and Wi-Fi security names.
+  Keep LTE, NR, 5G, WPA2, WPA3 and the other acronyms as they are; translate the words around them.
+  Keep each <annotation term="…"> around the matching words.
+-->
+<resources>
+    <!-- 5G standalone on high-band spectrum (e.g. mmWave). -->
+    <string name="net_detail_nr_sa_high_band"><annotation term="nr">NR</annotation> <annotation term="sa">standalone</annotation>, <annotation term="high_band">high band</annotation></string>
+    <!-- 5G standalone. -->
+    <string name="net_detail_nr_sa"><annotation term="nr">NR</annotation> <annotation term="sa">standalone</annotation></string>
+    <!-- 5G non-standalone (LTE plus 5G NR) on high-band spectrum. -->
+    <string name="net_detail_nr_nsa_high_band"><annotation term="lte">LTE</annotation> + <annotation term="nr">NR</annotation>, <annotation term="high_band">high band</annotation></string>
+    <string name="net_detail_nr_nsa" translatable="false"><annotation term="lte">LTE</annotation> + <annotation term="nr">NR</annotation></string>
+    <!-- LTE using several channels at once. -->
+    <string name="net_detail_lte_ca"><annotation term="lte">LTE</annotation> <annotation term="carrier_aggregation">carrier aggregation</annotation></string>
+    <!-- Some carriers brand LTE Advanced Pro "5G E"; this says it isn't 5G. -->
+    <string name="net_detail_lte_a_pro"><annotation term="lte_a_pro">LTE Advanced Pro</annotation>, not <annotation term="five_g">5G</annotation></string>
+
+    <!-- Wi-Fi security names. "Open" means no password; use the word Android's Wi-Fi settings use. -->
+    <string name="wifi_security_open"><annotation term="open">Open</annotation></string>
+    <!-- No password, but encrypted (OWE). Use the name Android's Wi-Fi settings use. -->
+    <string name="wifi_security_enhanced_open"><annotation term="enhanced_open">Enhanced Open</annotation></string>
+    <string name="wifi_security_wep" translatable="false"><annotation term="wep">WEP</annotation></string>
+    <string name="wifi_security_wpa2" translatable="false"><annotation term="wpa2">WPA2</annotation></string>
+    <string name="wifi_security_wpa3" translatable="false"><annotation term="wpa3">WPA3</annotation></string>
+    <!-- WPA2 for businesses, with a separate login per person. -->
+    <string name="wifi_security_wpa2_enterprise"><annotation term="wpa2">WPA2</annotation> Enterprise</string>
+    <string name="wifi_security_wpa3_enterprise"><annotation term="wpa3">WPA3</annotation> Enterprise</string>
+    <string name="wifi_security_wpa3_enterprise_192"><annotation term="wpa3">WPA3</annotation> Enterprise 192-bit</string>
+    <string name="wifi_security_passpoint" translatable="false">Passpoint</string>
+    <string name="wifi_security_wapi" translatable="false">WAPI</string>
+    <string name="wifi_security_osen" translatable="false">OSEN</string>
+    <string name="wifi_security_dpp" translatable="false">DPP</string>
+</resources>

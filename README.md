@@ -4,6 +4,10 @@ An Android home-screen widget that shows which SIM is currently carrying your mo
 
 Licensed under the [Apache License 2.0](LICENSE).
 
+## Trademarks
+
+The Apache License covers the code, not the "Carrier Pigeon" name or the pigeon icon. Forks need a different name and icon. See [TRADEMARKS.md](TRADEMARKS.md) for the details and the list of excluded artwork files.
+
 ## Status: proof of concept
 
 This build is a spike to confirm, on a real phone, that every automatic data SIM switch is reported. It contains:
@@ -38,3 +42,24 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 Requires JDK 17 and the Android SDK (compileSdk 36). `./gradlew assembleProdDebug` builds a debug APK ("Carrier Pigeon Debug", its own package, installs beside any other build).
 
 Release builds are signed in CI with keys in Cloud KMS and are reproducible for F-Droid. See [docs/signing.md](docs/signing.md).
+
+### Release configuration
+
+`release.yml` reads which Google Cloud project, keys, accounts and apps to use from Actions variables (Settings → Secrets and variables → Actions → Variables), so a fork doesn't inherit this repository's infrastructure. None of them are secrets: the Workload Identity bindings are what protect the keys. The values come from `tofu output` in mobile-build-infra (`build/` and `bootstrap/`).
+
+Most are set on the GitHub environments (Settings → Environments → *name* → Environment variables), each under the same name with that environment's value. The rest are shared, so set them once at repository level. A variable set on an environment overrides a repository variable with the same name.
+
+Each job that needs variables checks them first. When any are missing it warns and does nothing, and the jobs that depend on it are skipped, so a fork with no variables still builds and leaves the unsigned build in the run's artifacts.
+
+| Variable | Where | Value |
+| --- | --- | --- |
+| `GCP_WIF_PROVIDER` | repository | The Workload Identity provider: `projects/<number>/locations/global/workloadIdentityPools/github/providers/github` |
+| `PLAY_PACKAGE` | repository | The app's package name on Google Play |
+| `KMS_KEY` | `dev`, `qa`, `prod` | The Cloud KMS key that environment signs with, `projects/<project>/locations/<region>/keyRings/<ring>/cryptoKeys/<key>`: the dev key in `dev`, the Play upload key in `qa`, the release key in `prod` |
+| `SIGNER` | `dev`, `qa`, `prod` | The service account allowed to sign with that key |
+| `FIREBASE_DISTRIBUTOR` | `dev` | The account that uploads to Firebase App Distribution (bootstrap/ output `distribute_service_account`) |
+| `FIREBASE_APP_ID` | `dev` | The Firebase Android app, `1:<project number>:android:<hex>` (build/ output `firebase_android_app_ids`) |
+| `FIREBASE_TESTER_GROUP` | `dev` | The App Distribution tester group alias |
+| `PLAY_PUBLISHER` | `qa`, `prod` (or repository) | The Play publisher account: a Play Console user with release rights on this app only, bound to the `qa` and `prod` environments on `main` |
+
+From the command line: `gh variable set KMS_KEY --env dev --body 'projects/…'`, or without `--env` for a repository variable. See [docs/signing.md](docs/signing.md) for how the keys and accounts are set up.

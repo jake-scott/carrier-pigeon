@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Borrador de traducción: revisar antes de publicar. -->
+<resources>
+    <string name="net_detail_nr_sa_high_band"><annotation term="nr">NR</annotation> <annotation term="sa">independiente</annotation>, <annotation term="high_band">banda alta</annotation></string>
+    <string name="net_detail_nr_sa"><annotation term="nr">NR</annotation> <annotation term="sa">independiente</annotation></string>
+    <string name="net_detail_nr_nsa_high_band"><annotation term="lte">LTE</annotation> + <annotation term="nr">NR</annotation>, <annotation term="high_band">banda alta</annotation></string>
+    <string name="net_detail_lte_ca"><annotation term="lte">LTE</annotation> con <annotation term="carrier_aggregation">agregación de portadoras</annotation></string>
+    <string name="net_detail_lte_a_pro"><annotation term="lte_a_pro">LTE Advanced Pro</annotation>, no es <annotation term="five_g">5G</annotation></string>
+
+    <string name="wifi_security_open"><annotation term="open">Abierta</annotation></string>
+    <string name="wifi_security_enhanced_open"><annotation term="enhanced_open">Enhanced Open</annotation></string>
+    <string name="wifi_security_wpa2_enterprise"><annotation term="wpa2">WPA2</annotation> Empresarial</string>
+    <string name="wifi_security_wpa3_enterprise"><annotation term="wpa3">WPA3</annotation> Empresarial</string>
+    <string name="wifi_security_wpa3_enterprise_192"><annotation term="wpa3">WPA3</annotation> Empresarial de 192 bits</string>
+</resources>

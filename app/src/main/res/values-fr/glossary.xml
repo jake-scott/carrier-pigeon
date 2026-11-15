@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brouillon de traduction : l’exactitude technique doit être relue avant publication. -->
+<resources>
+    <string name="glossary_lte_body">Long Term Evolution, le réseau mobile 4G. La plupart des données mobiles passent encore par la LTE, y compris l’« ancre » LTE sur laquelle repose la 5G NSA.</string>
+    <string name="glossary_lte_plus_body">LTE avec agrégation de porteuses : le téléphone utilise plusieurs canaux LTE à la fois, ce qui donne plus de débit que la LTE simple. C’est toujours de la 4G.</string>
+    <string name="glossary_carrier_aggregation_title">Agrégation de porteuses</string>
+    <string name="glossary_carrier_aggregation_body">Combinaison de deux canaux radio ou plus en une seule connexion, pour que les données circulent sur tous à la fois. Affichée comme LTE+ dans la barre d’état.</string>
+    <string name="glossary_lte_a_pro_body">LTE Advanced Pro, la dernière évolution de la 4G : davantage de canaux agrégés et des antennes plus intelligentes. Certains opérateurs américains l’appellent « 5G E », mais c’est de la LTE, pas de la 5G.</string>
+    <string name="glossary_five_g_body">La cinquième génération de réseaux mobiles. Sa radio s’appelle NR. Le libellé qui suit indique comment le téléphone l’utilise : NSA (avec la LTE) ou SA (5G seule).</string>
+    <string name="glossary_five_g_plus_body">De la 5G sur les fréquences que l’opérateur considère comme les plus rapides, généralement en bande haute (ondes millimétriques) ou sur des canaux très larges. Le débit peut être bien plus élevé, mais la portée est plus courte.</string>
+    <string name="glossary_nr_body">New Radio, la technologie radio de la 5G. « LTE + NR » signifie que le téléphone a une connexion LTE à laquelle s’ajoute la 5G NR.</string>
+    <string name="glossary_nsa_body">5G non autonome. Le téléphone reste connecté à une cellule LTE, qui gère la signalisation, et la 5G NR s’y ajoute pour plus de débit. Android peut afficher 5G lorsque la cellule LTE signale seulement la 5G à proximité, même si aucune donnée ne passe par la NR à ce moment-là.</string>
+    <string name="glossary_sa_body">5G autonome. Le téléphone communique avec un cœur de réseau 5G uniquement via la NR, sans LTE en dessous. Cela peut apporter une latence plus faible et des fonctions 5G plus récentes.</string>
+    <string name="glossary_high_band_title">Bande haute</string>
+    <string name="glossary_high_band_body">Fréquences 5G élevées, comme les ondes millimétriques. Très rapides mais de courte portée, et facilement bloquées par les murs. Les opérateurs les signalent souvent par 5G+ ou 5G UW.</string>
+    <string name="glossary_three_g_body">La troisième génération de réseaux mobiles (UMTS, HSPA). Des données utilisables mais lentes selon les critères actuels. De nombreux opérateurs l’ont arrêtée.</string>
+    <string name="glossary_two_g_body">La deuxième génération de réseaux mobiles (GSM, GPRS, EDGE). Appels et SMS, mais des données très lentes.</string>
+    <string name="glossary_esim_body">Une SIM intégrée : une puce intégrée au téléphone, configurée en téléchargeant un profil de l’opérateur au lieu d’insérer une carte en plastique.</string>
+    <string name="glossary_wifi_body">Le téléphone accède à internet par le Wi-Fi en ce moment : les données mobiles ne sont donc pas utilisées, même si une SIM est choisie pour les données mobiles.</string>
+    <string name="glossary_vpn_body">Un réseau privé virtuel. Votre trafic passe par un tunnel via une application VPN, par-dessus le Wi-Fi ou les données mobiles.</string>
+    <string name="glossary_cellular_title">Réseau mobile</string>
+    <string name="glossary_cellular_body">Les données mobiles d’une SIM. Le téléphone les utilise lorsqu’il n’est pas connecté au Wi-Fi (ou que le Wi-Fi n’a pas d’accès à internet). Les cartes ci-dessous indiquent quelle SIM les transporte.</string>
+    <string name="glossary_wifi_7_body">802.11be, la génération Wi-Fi la plus récente. Elle peut utiliser des canaux très larges et plusieurs bandes à la fois, pour les débits les plus élevés et la latence la plus faible. Le téléphone et le routeur doivent tous deux la prendre en charge.</string>
+    <string name="glossary_wifi_6e_body">Le Wi-Fi 6 sur la bande des 6 GHz. Ces fréquences supplémentaires sont moins encombrées, donc souvent plus rapides et plus stables, mais les 6 GHz traversent moins bien les murs.</string>
+    <string name="glossary_wifi_6_body">802.11ax. Plus rapide que le Wi-Fi 5 et bien meilleur lorsque de nombreux appareils partagent le même réseau.</string>
+    <string name="glossary_wifi_5_body">802.11ac, sur la bande des 5 GHz. Encore courant et assez rapide pour la plupart des usages.</string>
+    <string name="glossary_wifi_4_body">802.11n, une génération plus ancienne. Il fonctionne en 2,4 GHz et en 5 GHz, mais il est nettement plus lent que le Wi-Fi 5 ou 6.</string>
+    <string name="glossary_wifi_old_title">Wi-Fi ancien</string>
+    <string name="glossary_wifi_old_body">Les Wi-Fi 1, 2 et 3 sont les normes d’origine 802.11b, 802.11a et 802.11g, apparues entre 1999 et 2003 environ. Bien plus lentes que tout ce qui a suivi. Le Wi-Fi virtuel de l’émulateur Android se présente aussi de cette façon.</string>
+    <string name="glossary_wpa3_body">La sécurité Wi-Fi la plus récente. Elle protège le mot de passe contre les tentatives de devinette et garde le trafic passé en sécurité même si le mot de passe fuite plus tard.</string>
+    <string name="glossary_wpa2_body">Wi-Fi Protected Access 2, la sécurité Wi-Fi la plus courante. Suffisante avec un mot de passe robuste ; le WPA3 est plus récent et plus sûr.</string>
+    <string name="glossary_wep_body">Un très ancien système de sécurité Wi-Fi qui peut être cassé en quelques minutes. Considérez le réseau comme ouvert.</string>
+    <string name="glossary_open_title">Ouvert</string>
+    <string name="glossary_open_body">Ni mot de passe ni chiffrement Wi-Fi. Les personnes à proximité peuvent voir votre trafic, sauf si l’application ou le site le chiffre (c’est le cas de la plupart, via HTTPS).</string>
+    <string name="glossary_enhanced_open_title">Enhanced Open</string>
+    <string name="glossary_enhanced_open_body">Pas de mot de passe, mais le trafic de chaque appareil est tout de même chiffré (OWE) : les personnes à proximité ne peuvent pas le lire.</string>
+</resources>

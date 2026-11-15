@@ -12,7 +12,7 @@ uses them, `.github/workflows/release.yml`.
 | --- | --- | --- | --- | --- |
 | any branch, PR | sideload | `….carrierpigeon.debug`, "Carrier Pigeon Debug" | Android debug key | `carrier-pigeon-debug` artifact (`build.yml`) |
 | `dev` | dev | `….carrierpigeon.dev`, "Carrier Pigeon Dev" | `dev` | Firebase App Distribution, group `carrier-pigeon-dev` |
-| `main` | internal | `io.github.jakescott.carrierpigeon` | `play` (upload key, bundle) | Play internal track |
+| `main` | internal | `dev.jakethesnake.carrierpigeon` | `play` (upload key, bundle) | Play internal track |
 | tag `vX.Y.Z` | prod | same | `release` (APK) | GitHub release, and F-Droid builds the tag; the internal Play release built from the tagged commit is promoted to production |
 
 The debug and dev builds each have their own package, so all three install
@@ -102,18 +102,26 @@ openssl x509 -in signing-certs/release.pem -noout -fingerprint -sha256 | cut -d=
    `prod` required reviewers where the plan allows it. Take changes to `dev`
    through pull requests: anyone who can push there can sign with the dev
    key.
-3. **Firebase:** set `FIREBASE_APP_ID` in `release.yml` from
+3. **Actions variables:** set `GCP_WIF_PROVIDER` on the repository, and
+   `KMS_KEY` and `SIGNER` on each environment (the dev key in `dev`, the
+   play key in `qa`, the release key in `prod`), from `tofu output` in
+   mobile-build-infra. The README lists them, under "Release
+   configuration". A channel whose variables aren't set builds but isn't
+   signed.
+4. **Firebase:** on the `dev` environment, set `FIREBASE_APP_ID` from
    `tofu output firebase_android_app_ids` in mobile-build-infra `build/`,
-   and create the `carrier-pigeon-dev` tester group in the Firebase console
-   (App Distribution, Testers & Groups). Until then `distribute` warns and
+   `FIREBASE_DISTRIBUTOR` from `bootstrap/`, and `FIREBASE_TESTER_GROUP`,
+   and create that tester group in the Firebase console (App Distribution,
+   Testers & Groups). Until then `distribute` is skipped with a warning and
    the APK stays in the run's `signed-dev` artifact.
-4. **Play:** create the app in Play Console and upload the first bundle by
+5. **Play:** create the app in Play Console and upload the first bundle by
    hand (the first main run makes `play.pem` and attaches the bundle). Then
    add the publisher account to mobile-build-infra (a Play Console user with
    release rights on this app only, bound to the `qa` and `prod`
-   environments on `main`) and set `PUBLISHER` in `release.yml`. Until then
-   `upload-internal` and `promote` warn and do nothing.
-5. **First run per key.** A key with no certificate in `signing-certs/` gets
+   environments on `main`) and set the `PLAY_PACKAGE` (repository) and
+   `PLAY_PUBLISHER` variables. Until then `upload-internal` and `promote` are skipped with a
+   warning.
+6. **First run per key.** A key with no certificate in `signing-certs/` gets
    one made, and the run attaches it instead of shipping. Commit
    `release.pem` and `play.pem` (`dev.pem` is already here), then run again.
 

@@ -17,7 +17,7 @@ name: Release
 # the same commit, which testers already had. Tag a commit main has built.
 #
 # Who can sign. Each key's signer account trusts exactly one value of
-#   <GitHub environment>|jake-scott/carrier-pigeon/.github/workflows/release.yml@<ref>
+#   <GitHub environment>|<owner>/<repo>/.github/workflows/release.yml@<ref>
 # The dev key trusts the dev environment on refs/heads/dev; the release and
 # play keys trust qa and prod on refs/heads/main. So only this file, as
 # committed on that branch, running in that environment, can sign. An edited
@@ -48,10 +48,17 @@ name: Release
 # instead (-PplayVersionCode), so every main push can upload; F-Droid never
 # builds them.
 #
-# The values below are from `tofu output` in mobile-build-infra (build/ and
-# bootstrap/). They aren't secrets: the Workload Identity bindings are what
-# protect the keys. A value that is still REPLACE_ME turns its job off with a
-# warning instead of failing the run.
+# Which Google Cloud project, keys, accounts and apps to use comes from
+# Actions variables (Settings > Secrets and variables > Actions >
+# Variables), not from this file, so a fork doesn't point at this
+# repository's infrastructure. Most are set per GitHub environment under the
+# same name: KMS_KEY and SIGNER are the dev key in dev, the play key in qa
+# and the release key in prod. README.md lists them; the values are from
+# `tofu output` in mobile-build-infra (build/ and bootstrap/). They aren't
+# secrets: the Workload Identity bindings are what protect the keys. Each
+# job that needs them checks them first and, when they aren't set, does
+# nothing but warn, and the jobs after it are skipped, so a fork with none
+# of them still builds (the unsigned build is in the run's artifacts).
 #
 # The first run for a key has no certificate to attach yet
 # (signing-certs/<key>.pem). That run makes it, signs with it and attaches
@@ -69,20 +76,10 @@ permissions:
   contents: read
 
 env:
-  WIF_PROVIDER: projects/26387807765/locations/global/workloadIdentityPools/github/providers/github
-  # Firebase App Distribution, in the distribution project (bootstrap/
-  # outputs distribute_service_account; build/ output
-  # firebase_android_app_ids["carrier-pigeon"]). The project number is the
-  # second field of the app id.
-  DISTRIBUTOR: app-distribute@mobile-build-dist-hfe7uw.iam.gserviceaccount.com
-  FIREBASE_APP_ID: "1:1039729410511:android:58a6770dc90ffd2dead2ba"
-  TESTER_GROUP: carrier-pigeon-dev
-  # Google Play. The publisher account isn't in mobile-build-infra yet: a
-  # Play Console user with release rights on this app only and no Google
-  # Cloud roles, bound to qa|...release.yml@refs/heads/main (upload) and
-  # prod|...release.yml@refs/heads/main (promote).
-  PACKAGE: io.github.jakescott.carrierpigeon
-  PUBLISHER: REPLACE_ME
+  # Everything this repository's infrastructure decides is an Actions
+  # variable instead (README.md, "Release configuration"). They're read in
+  # each job's "is configured" step, not here: environment variables are
+  # only visible to the jobs that run in that environment.
   INTERNAL_TRACK: internal
   PROD_TRACK: production
   # Google's PKCS#11 library for Cloud KMS, from its GitHub release. Pinned
@@ -285,20 +282,44 @@ jobs:
     env:
       CHANNEL: ${{ needs.setup.outputs.channel }}
       KEY_NAME: ${{ needs.setup.outputs.channel == 'dev' && 'dev' || 'release' }}
-      KMS_KEY: ${{ needs.setup.outputs.channel == 'dev' && 'projects/mobile-build-hfe7uw/locations/us-central1/keyRings/carrier-pigeon-dev/cryptoKeys/carrier-pigeon-dev' || 'projects/mobile-build-hfe7uw/locations/us-central1/keyRings/carrier-pigeon-release/cryptoKeys/carrier-pigeon-release' }}
-      SIGNER: ${{ needs.setup.outputs.channel == 'dev' && 'carrier-pigeon-dev-sign@mobile-build-hfe7uw.iam.gserviceaccount.com' || 'carrier-pigeon-release-sign@mobile-build-hfe7uw.iam.gserviceaccount.com' }}
       # apksig signs with SHA-512 for 4096-bit RSA keys, so these keys must be
       # RSA_SIGN_PKCS1_4096_SHA512 in KMS (docs/signing.md).
       KMS_DIGEST: sha512
     outputs:
+      signed: ${{ steps.configured.outputs.ok }}
       first: ${{ steps.first.outputs.first }}
     steps:
+      # KMS_KEY and SIGNER are this environment's key: the dev key in dev,
+      # the release key in prod.
+      - name: Signing is configured
+        id: configured
+        env:
+          WHAT: Signing
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+          NEEDED: GCP_WIF_PROVIDER KMS_KEY SIGNER
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          KMS_KEY: ${{ vars.KMS_KEY }}
+          SIGNER: ${{ vars.SIGNER }}
+        run: |
+          missing=()
+          for v in $NEEDED; do
+            if [ -n "${!v}" ]; then echo "$v=${!v}" >> "$GITHUB_ENV"; else missing+=("$v"); fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=$WHAT skipped::Set ${missing[*]} in the variables of the $ENVIRONMENT environment (or the repository's). See README.md, Release configuration."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.configured.outputs.ok == 'true'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.configured.outputs.ok == 'true'
         with:
           name: unsigned
           path: out
       - name: First signing with this key?
+        if: steps.configured.outputs.ok == 'true'
         id: first
         run: |
           cert="signing-certs/$KEY_NAME.pem"
@@ -311,16 +332,20 @@ jobs:
       # The library signs with the short-lived credentials file this writes
       # to the workspace.
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: steps.configured.outputs.ok == 'true'
         with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
           service_account: ${{ env.SIGNER }}
       - name: Install the Cloud KMS PKCS#11 library
+        if: steps.configured.outputs.ok == 'true'
         run: scripts/install_kmsp11.sh
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: steps.configured.outputs.ok == 'true'
         with:
           distribution: temurin
           java-version: "17"
       - name: Get apksig
+        if: steps.configured.outputs.ok == 'true'
         run: |
           jar="$RUNNER_TEMP/apksig-$APKSIG_VERSION.jar"
           curl --silent --show-error --fail --location -o "$jar" \
@@ -336,6 +361,7 @@ jobs:
 
       # kms_sign.sh checks the APK verifies and carries this certificate.
       - name: Sign the APK
+        if: steps.configured.outputs.ok == 'true'
         run: |
           mkdir -p signed
           flavor=$([ "$CHANNEL" = dev ] && echo dev || echo prod)
@@ -353,6 +379,7 @@ jobs:
           path: ${{ env.CERT }}
           if-no-files-found: ignore
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.configured.outputs.ok == 'true'
         with:
           name: signed-${{ env.CHANNEL }}
           path: signed/
@@ -363,7 +390,9 @@ jobs:
   # app-distribute, which can do nothing else.
   distribute:
     needs: [setup, build, sign-apk]
-    if: needs.setup.outputs.channel == 'dev' && !needs.sign-apk.outputs.first
+    if: >-
+      needs.setup.outputs.channel == 'dev' && needs.sign-apk.outputs.signed == 'true' &&
+      !needs.sign-apk.outputs.first
     runs-on: ubuntu-24.04
     environment: dev
     permissions:
@@ -375,15 +404,27 @@ jobs:
       # anyone with push access writes.
       HEAD_MESSAGE: ${{ github.event.head_commit.message }}
     steps:
-      - name: Distribution is configured
+      - name: App Distribution is configured
         id: configured
+        env:
+          WHAT: App Distribution
+          ENVIRONMENT: dev
+          NEEDED: GCP_WIF_PROVIDER FIREBASE_DISTRIBUTOR FIREBASE_APP_ID FIREBASE_TESTER_GROUP
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          FIREBASE_DISTRIBUTOR: ${{ vars.FIREBASE_DISTRIBUTOR }}
+          FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          FIREBASE_TESTER_GROUP: ${{ vars.FIREBASE_TESTER_GROUP }}
         run: |
-          case "$FIREBASE_APP_ID" in
-            *REPLACE_ME*)
-              echo "::warning title=Not distributed::FIREBASE_APP_ID is still a placeholder. Fill it in in release.yml from \`tofu output firebase_android_app_ids\` in mobile-build-infra/build. The signed APK is in the signed-dev artifact."
-              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
-            *) echo "ok=true" >> "$GITHUB_OUTPUT" ;;
-          esac
+          missing=()
+          for v in $NEEDED; do
+            if [ -n "${!v}" ]; then echo "$v=${!v}" >> "$GITHUB_ENV"; else missing+=("$v"); fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=$WHAT skipped::Set ${missing[*]} in the variables of the $ENVIRONMENT environment (or the repository's). See README.md, Release configuration."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: steps.configured.outputs.ok == 'true'
         with:
@@ -393,8 +434,8 @@ jobs:
         if: steps.configured.outputs.ok == 'true'
         id: auth
         with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.DISTRIBUTOR }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.FIREBASE_DISTRIBUTOR }}
           token_format: access_token
       # App Distribution's REST API with curl and jq: no third-party action
       # or npm package runs where the token is.
@@ -452,15 +493,15 @@ jobs:
             "$api/v1/$release?updateMask=release_notes.text")
 
           call --request POST --header "Content-Type: application/json" \
-            --data "$(jq -n --arg g "$TESTER_GROUP" '{groupAliases: [$g]}')" \
+            --data "$(jq -n --arg g "$FIREBASE_TESTER_GROUP" '{groupAliases: [$g]}')" \
             "$api/v1/$release:distribute" >/dev/null
 
-          echo "Distributed $(jq -r .displayVersion <<<"$details") ($(jq -r .buildVersion <<<"$details")) to $TESTER_GROUP: $notes"
+          echo "Distributed $(jq -r .displayVersion <<<"$details") ($(jq -r .buildVersion <<<"$details")) to $FIREBASE_TESTER_GROUP: $notes"
           # Not binaryDownloadUri: it downloads the APK without signing in, and
           # run logs are readable by anyone who can read the repository.
           {
             echo "### Firebase App Distribution"
-            echo "Release $(jq -r .displayVersion <<<"$details") to \`$TESTER_GROUP\`: $notes"
+            echo "Release $(jq -r .displayVersion <<<"$details") to \`$FIREBASE_TESTER_GROUP\`: $notes"
             echo
             echo "Testers: $(jq -r '.testingUri // "n/a"' <<<"$details")"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -476,22 +517,45 @@ jobs:
       contents: read
       id-token: write
     env:
-      KMS_KEY: projects/mobile-build-hfe7uw/locations/us-central1/keyRings/carrier-pigeon-play/cryptoKeys/carrier-pigeon-play
-      SIGNER: carrier-pigeon-play-sign@mobile-build-hfe7uw.iam.gserviceaccount.com
       # jarsigner is told the algorithm, so the play key stays
       # RSA_SIGN_PKCS1_4096_SHA256.
       KMS_DIGEST: sha256
       CERT: signing-certs/play.pem
       AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}.aab
     outputs:
+      signed: ${{ steps.configured.outputs.ok }}
       first: ${{ steps.first.outputs.first }}
     steps:
+      # KMS_KEY and SIGNER in qa are the play (upload) key.
+      - name: Signing is configured
+        id: configured
+        env:
+          WHAT: Signing
+          ENVIRONMENT: qa
+          NEEDED: GCP_WIF_PROVIDER KMS_KEY SIGNER
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          KMS_KEY: ${{ vars.KMS_KEY }}
+          SIGNER: ${{ vars.SIGNER }}
+        run: |
+          missing=()
+          for v in $NEEDED; do
+            if [ -n "${!v}" ]; then echo "$v=${!v}" >> "$GITHUB_ENV"; else missing+=("$v"); fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=$WHAT skipped::Set ${missing[*]} in the variables of the $ENVIRONMENT environment (or the repository's). See README.md, Release configuration."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.configured.outputs.ok == 'true'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.configured.outputs.ok == 'true'
         with:
           name: unsigned
           path: out
       - name: First signing with this key?
+        if: steps.configured.outputs.ok == 'true'
         id: first
         run: |
           if [ ! -f "$CERT" ]; then
@@ -499,12 +563,15 @@ jobs:
             echo "::notice title=New certificate::$CERT doesn't exist yet. This run makes it; commit it from the bundle-internal artifact. Upload that first bundle to Play Console by hand when you create the app there."
           fi
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: steps.configured.outputs.ok == 'true'
         with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
           service_account: ${{ env.SIGNER }}
       - name: Install the Cloud KMS PKCS#11 library
+        if: steps.configured.outputs.ok == 'true'
         run: scripts/install_kmsp11.sh
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: steps.configured.outputs.ok == 'true'
         with:
           distribution: temurin
           java-version: "17"
@@ -514,12 +581,14 @@ jobs:
           sudo apt-get install --yes --no-install-recommends libengine-pkcs11-openssl
           scripts/kms_sign.sh cert "$CERT" "Carrier Pigeon (Play upload)"
       - name: Sign the bundle
+        if: steps.configured.outputs.ok == 'true'
         run: |
           mkdir -p signed
           cp out/app-prod-release.aab "$AAB"
           scripts/kms_sign.sh aab "$AAB" "$CERT"
           [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.configured.outputs.ok == 'true'
         with:
           name: bundle-internal
           path: signed/
@@ -530,7 +599,9 @@ jobs:
   # with the commit, which promote looks for.
   upload-internal:
     needs: [setup, build, sign-bundle]
-    if: needs.setup.outputs.channel == 'internal' && !needs.sign-bundle.outputs.first
+    if: >-
+      needs.setup.outputs.channel == 'internal' && needs.sign-bundle.outputs.signed == 'true' &&
+      !needs.sign-bundle.outputs.first
     runs-on: ubuntu-24.04
     environment: qa
     permissions:
@@ -540,15 +611,26 @@ jobs:
       AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}.aab
       RELEASE_NAME: ${{ needs.build.outputs.version }} (${{ needs.build.outputs.code }}) ${{ needs.setup.outputs.sha }}
     steps:
-      - name: Publishing is configured
+      - name: Google Play is configured
         id: configured
+        env:
+          WHAT: Google Play
+          ENVIRONMENT: qa
+          NEEDED: GCP_WIF_PROVIDER PLAY_PACKAGE PLAY_PUBLISHER
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          PLAY_PACKAGE: ${{ vars.PLAY_PACKAGE }}
+          PLAY_PUBLISHER: ${{ vars.PLAY_PUBLISHER }}
         run: |
-          case "$PUBLISHER" in
-            *REPLACE_ME*)
-              echo "::warning title=Not uploaded to Play::PUBLISHER is still a placeholder (no Play publisher account yet). The signed bundle is in the bundle-internal artifact."
-              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
-            *) echo "ok=true" >> "$GITHUB_OUTPUT" ;;
-          esac
+          missing=()
+          for v in $NEEDED; do
+            if [ -n "${!v}" ]; then echo "$v=${!v}" >> "$GITHUB_ENV"; else missing+=("$v"); fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=$WHAT skipped::Set ${missing[*]} in the variables of the $ENVIRONMENT environment (or the repository's). See README.md, Release configuration."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: steps.configured.outputs.ok == 'true'
         with:
@@ -558,8 +640,8 @@ jobs:
         if: steps.configured.outputs.ok == 'true'
         id: auth
         with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.PUBLISHER }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.PLAY_PUBLISHER }}
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
       # The Play Developer API with curl and jq: no third-party action runs
@@ -570,8 +652,8 @@ jobs:
           TOKEN: ${{ steps.auth.outputs.access_token }}
         run: |
           set -euo pipefail
-          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE"
-          upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PACKAGE"
+          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PLAY_PACKAGE"
+          upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PLAY_PACKAGE"
           auth=(--header "Authorization: Bearer $TOKEN")
           # On an HTTP error, show Google's error body (it names what's
           # missing) instead of only curl's status line.
@@ -601,7 +683,7 @@ jobs:
   # byte-for-byte the build we signed, and our signature copies onto it.
   verify:
     needs: [setup, build, rebuild, sign-apk]
-    if: needs.setup.outputs.channel == 'prod'
+    if: needs.setup.outputs.channel == 'prod' && needs.sign-apk.outputs.signed == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -633,7 +715,9 @@ jobs:
   # The GitHub release for the pushed tag; F-Droid builds the tag.
   publish:
     needs: [setup, build, sign-apk, verify]
-    if: needs.setup.outputs.channel == 'prod' && !needs.sign-apk.outputs.first
+    if: >-
+      needs.setup.outputs.channel == 'prod' && needs.sign-apk.outputs.signed == 'true' &&
+      !needs.sign-apk.outputs.first
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -664,21 +748,32 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Publishing is configured
+      - name: Google Play is configured
         id: configured
+        env:
+          WHAT: Google Play
+          ENVIRONMENT: prod
+          NEEDED: GCP_WIF_PROVIDER PLAY_PACKAGE PLAY_PUBLISHER
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          PLAY_PACKAGE: ${{ vars.PLAY_PACKAGE }}
+          PLAY_PUBLISHER: ${{ vars.PLAY_PUBLISHER }}
         run: |
-          case "$PUBLISHER" in
-            *REPLACE_ME*)
-              echo "::warning title=Not promoted on Play::PUBLISHER is still a placeholder (no Play publisher account yet)."
-              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
-            *) echo "ok=true" >> "$GITHUB_OUTPUT" ;;
-          esac
+          missing=()
+          for v in $NEEDED; do
+            if [ -n "${!v}" ]; then echo "$v=${!v}" >> "$GITHUB_ENV"; else missing+=("$v"); fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=$WHAT skipped::Set ${missing[*]} in the variables of the $ENVIRONMENT environment (or the repository's). See README.md, Release configuration."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: steps.configured.outputs.ok == 'true'
         id: auth
         with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.PUBLISHER }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.PLAY_PUBLISHER }}
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
       - name: Promote the internal release to production
@@ -689,7 +784,7 @@ jobs:
           SHA: ${{ needs.setup.outputs.sha }}
         run: |
           set -euo pipefail
-          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE"
+          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PLAY_PACKAGE"
           auth=(--header "Authorization: Bearer $TOKEN")
           # On an HTTP error, show Google's error body (it names what's
           # missing) instead of only curl's status line.
