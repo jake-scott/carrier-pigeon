@@ -75,7 +75,7 @@ env:
   # firebase_android_app_ids["carrier-pigeon"]). The project number is the
   # second field of the app id.
   DISTRIBUTOR: app-distribute@mobile-build-dist-hfe7uw.iam.gserviceaccount.com
-  FIREBASE_APP_ID: REPLACE_ME
+  FIREBASE_APP_ID: "1:1039729410511:android:58a6770dc90ffd2dead2ba"
   TESTER_GROUP: carrier-pigeon-dev
   # Google Play. The publisher account isn't in mobile-build-infra yet: a
   # Play Console user with release rights on this app only and no Google
