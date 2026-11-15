@@ -7,27 +7,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.telephony.SubscriptionInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -41,29 +28,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import androidx.glance.appwidget.updateAll
+import androidx.lifecycle.lifecycleScope
 import io.github.jakescott.carrierpigeon.data.AppSettings
 import io.github.jakescott.carrierpigeon.data.DataSimRefresher
 import io.github.jakescott.carrierpigeon.data.DataSimResolver
 import io.github.jakescott.carrierpigeon.data.DataSimState
 import io.github.jakescott.carrierpigeon.data.DisplayInfoTracker
-import io.github.jakescott.carrierpigeon.data.NetworkLabel
 import io.github.jakescott.carrierpigeon.data.StateStore
 import io.github.jakescott.carrierpigeon.data.SwitchLog
 import io.github.jakescott.carrierpigeon.widget.CarrierPigeonWidget
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
-/** Proof-of-concept screen: current data SIM, all active SIMs, and the spike log. */
+/** The app screen: a tile per active SIM (see [HomeScreen]), with the switch log in the menu. */
 class MainActivity : ComponentActivity() {
     /** Bumped each time the widget opens us to ask for phone access. */
     private var accessRequests by mutableIntStateOf(0)
@@ -125,8 +103,6 @@ private fun MainScreen(accessRequests: Int) {
     var hasPermission by remember { mutableStateOf(resolver.hasPhoneStatePermission()) }
     // Access can also be granted or revoked in Settings while we're in the background.
     LaunchedEffect(state) { hasPermission = resolver.hasPhoneStatePermission() }
-    var logLines by remember { mutableStateOf(emptyList<String>()) }
-    var logVersion by remember { mutableIntStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
         scope.launch { DataSimRefresher.refresh(app, "permission-result", settle = false) }
@@ -156,127 +132,92 @@ private fun MainScreen(accessRequests: Int) {
         if (accessRequests > 0 || !settings.askedForPhoneAccess()) requestPhoneAccess()
     }
 
-    LaunchedEffect(state, logVersion) {
-        logLines = withContext(Dispatchers.IO) { log.readLines().asReversed() }
-    }
     val sims = remember(state, hasPermission) { resolver.activeSubscriptions() }
-    // Redraw the SIM list when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
+    // Redraw the tiles when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
     val displayInfoVersion by DisplayInfoTracker.version.collectAsState()
     val showDetail by settings.showNetworkDetail.collectAsState(initial = false)
+    val tiles = remember(sims, state, displayInfoVersion) { simTiles(sims, state, resolver) }
 
-    Scaffold { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                Text("Carrier Pigeon", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 16.dp))
-            }
-            if (!hasPermission) {
-                item {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Allow phone access to show your SIM names. Without it the widget can only show the carrier name stored on the SIM.")
-                            Button(onClick = requestPhoneAccess) {
-                                Text("Allow")
-                            }
-                        }
-                    }
+    val actions = remember {
+        object : HomeActions {
+            override fun setShowDetail(show: Boolean) {
+                scope.launch {
+                    settings.setShowNetworkDetail(show)
+                    CarrierPigeonWidget().updateAll(app)
                 }
             }
-            item { CurrentSimCard(state, showDetail) }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Show network detail")
-                        Text(
-                            "What is under the network badge, e.g. \"LTE + NR\" after 5G NSA",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = showDetail,
-                        onCheckedChange = { show ->
-                            scope.launch {
-                                settings.setShowNetworkDetail(show)
-                                CarrierPigeonWidget().updateAll(app)
-                            }
-                        },
-                    )
-                }
+
+            override fun allowPhoneAccess() = requestPhoneAccess()
+
+            override fun refresh() {
+                scope.launch { DataSimRefresher.refresh(app, "manual", settle = false) }
             }
-            if (sims.isNotEmpty()) {
-                item { Text("Active SIMs", style = MaterialTheme.typography.titleMedium) }
-                items(sims, key = { it.subscriptionId }) { info ->
-                    val marker = if (info.subscriptionId == state?.activeSubId) "  ← data" else ""
-                    val network = remember(info.subscriptionId, state, displayInfoVersion) {
-                        resolver.networkLabel(info.subscriptionId)
-                    }
-                    Column {
-                        Text(
-                            "#${info.subscriptionId}  slot ${info.simSlotIndex + 1}  ${info.displayName} (${info.carrierName})" +
-                                (if (info.isEmbedded) "  eSIM" else "") + marker,
-                        )
-                        network?.let { NetworkLine(it, showDetail) }
-                    }
-                }
+
+            override fun readLog(): List<String> = log.readLines().asReversed()
+
+            override fun shareLog() {
+                val text = log.readLines().joinToString("\n")
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Carrier Pigeon switch log")
+                    .putExtra(Intent.EXTRA_TEXT, text)
+                context.startActivity(Intent.createChooser(send, "Share log"))
             }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { scope.launch { DataSimRefresher.refresh(app, "manual", settle = false) } }) { Text("Refresh") }
-                    OutlinedButton(onClick = {
-                        val text = log.readLines().joinToString("\n")
-                        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
-                            .putExtra(Intent.EXTRA_SUBJECT, "Carrier Pigeon switch log")
-                            .putExtra(Intent.EXTRA_TEXT, text)
-                        context.startActivity(Intent.createChooser(send, "Share log"))
-                    }) { Text("Share log") }
-                    OutlinedButton(onClick = { log.clear(); logVersion++ }) { Text("Clear") }
-                }
-            }
-            item { Text("Switch log (newest first)", style = MaterialTheme.typography.titleMedium) }
-            items(logLines) { line ->
-                Text(
-                    line,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    fontWeight = if (line.contains(" SWITCH ")) FontWeight.Bold else FontWeight.Normal,
-                )
-            }
+
+            override fun clearLog() = log.clear()
         }
     }
+
+    HomeScreen(
+        HomeState(
+            sims = tiles,
+            showDetail = showDetail,
+            needsPhoneAccess = !hasPermission,
+            notice = state?.takeIf { !it.hasActiveSub }?.let { "No SIM is carrying mobile data" },
+        ),
+        actions,
+    )
 }
 
-@Composable
-private fun CurrentSimCard(state: DataSimState?, showDetail: Boolean) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Mobile data is on", style = MaterialTheme.typography.labelLarge)
-            Text(state?.label ?: "…", style = MaterialTheme.typography.headlineSmall)
-            state?.status?.text?.let { Text("$it: no mobile data right now", color = MaterialTheme.colorScheme.error) }
-            if (state != null) {
-                Text("Active sub ${state.activeSubId} · default sub ${state.defaultSubId} · network sub ${state.networkSubId}")
-                Text("Internet via: ${state.accessLine}")
-                Text(if (state.isTemporarySwitch) "Backup SIM (not your default data SIM)" else "Your default data SIM")
-                state.carrierName?.let { Text("Carrier: $it") }
-                state.networkType?.let { NetworkLine(NetworkLabel(it, state.networkDetail), showDetail) }
-            }
-        }
+/**
+ * One tile per active SIM. Without phone access Android won't list the SIMs, so fall back to a
+ * single tile for the data SIM built from what the widget knows.
+ */
+private fun simTiles(sims: List<SubscriptionInfo>, state: DataSimState?, resolver: DataSimResolver): List<SimTileModel> {
+    if (sims.isEmpty()) {
+        if (state == null || !state.hasActiveSub) return emptyList()
+        return listOf(
+            SimTileModel(
+                subId = state.activeSubId,
+                slotIndex = state.slotIndex,
+                name = state.label,
+                carrier = state.carrierName,
+                isEmbedded = state.isEmbedded,
+                networkBadge = state.networkType,
+                networkDetail = state.networkDetail,
+                isData = true,
+                isDefaultData = !state.isTemporarySwitch,
+                problem = state.status.text,
+                internetVia = state.accessLine,
+            ),
+        )
     }
-}
-
-/** "Network: 5G NSA", optionally with what is underneath it ("LTE + NR") in smaller text. */
-@Composable
-private fun NetworkLine(network: NetworkLabel, showDetail: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Network: ${network.badge}", fontWeight = FontWeight.Medium)
-        network.detail?.takeIf { showDetail }?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    return sims.sortedBy { it.simSlotIndex }.map { info ->
+        val isData = info.subscriptionId == state?.activeSubId
+        val network = resolver.networkLabel(info.subscriptionId)
+        SimTileModel(
+            subId = info.subscriptionId,
+            slotIndex = info.simSlotIndex,
+            name = info.displayName?.toString()?.takeIf { it.isNotBlank() }
+                ?: info.carrierName?.toString()?.takeIf { it.isNotBlank() }
+                ?: "SIM ${info.simSlotIndex + 1}",
+            carrier = info.carrierName?.toString(),
+            isEmbedded = info.isEmbedded,
+            networkBadge = network?.badge,
+            networkDetail = network?.detail,
+            isData = isData,
+            isDefaultData = info.subscriptionId == state?.defaultSubId,
+            problem = if (isData) state?.status?.text else null,
+            internetVia = if (isData) state?.accessLine else null,
+        )
     }
 }
