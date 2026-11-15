@@ -14,7 +14,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -27,8 +32,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.lifecycleScope
 import io.github.jakescott.carrierpigeon.data.AppSettings
@@ -126,10 +133,13 @@ private fun MainScreen(accessRequests: Int) {
             }
         }
     }
+    // Android labels this permission "make and manage phone calls", so explain what it is really
+    // for before every prompt. The dialog's Continue button is what shows the system prompt.
+    var showRationale by rememberSaveable { mutableStateOf(false) }
     // Ask on the first ever open, and whenever the widget sends us here to ask.
     LaunchedEffect(accessRequests) {
         if (resolver.hasPhoneStatePermission()) return@LaunchedEffect
-        if (accessRequests > 0 || !settings.askedForPhoneAccess()) requestPhoneAccess()
+        if (accessRequests > 0 || !settings.askedForPhoneAccess()) showRationale = true
     }
 
     val sims = remember(state, hasPermission) { resolver.activeSubscriptions() }
@@ -147,7 +157,9 @@ private fun MainScreen(accessRequests: Int) {
                 }
             }
 
-            override fun allowPhoneAccess() = requestPhoneAccess()
+            override fun allowPhoneAccess() {
+                showRationale = true
+            }
 
             override fun refresh() {
                 scope.launch { DataSimRefresher.refresh(app, "manual", settle = false) }
@@ -175,6 +187,29 @@ private fun MainScreen(accessRequests: Int) {
             notice = state?.takeIf { !it.hasActiveSub }?.let { "No SIM is carrying mobile data" },
         ),
         actions,
+    )
+    if (showRationale) {
+        PhoneAccessRationale(
+            onContinue = { showRationale = false; requestPhoneAccess() },
+            onDismiss = { showRationale = false },
+        )
+    }
+}
+
+/** Shown before the system prompt, which words this permission as "make and manage phone calls". */
+@Composable
+private fun PhoneAccessRationale(onContinue: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Why phone access?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Carrier Pigeon needs it to read your SIM names and which network each SIM is on (4G, 5G and so on), so the widget can show them.")
+                Text("Android groups this with calls, so its prompt will say \"make and manage phone calls\". Carrier Pigeon never makes, answers or manages calls, and it doesn't read your call log or contacts.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onContinue) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
     )
 }
 

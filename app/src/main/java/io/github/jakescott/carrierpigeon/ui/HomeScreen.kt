@@ -188,8 +188,13 @@ private fun PhoneAccessCard(onAllow: () -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "Allow phone access to see all your SIMs and their names. Without it the app and widget " +
-                    "can only show the carrier name stored on the data SIM.",
+                "Allow phone access to see all your SIMs, their names and network type. Without it the app " +
+                    "and widget can only show the carrier name stored on the data SIM.",
+            )
+            Text(
+                "Carrier Pigeon only reads SIM and network info. It never makes or manages calls.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Button(onClick = onAllow) { Text("Allow") }
         }
