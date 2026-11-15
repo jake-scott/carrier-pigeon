@@ -20,7 +20,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -52,32 +60,83 @@ data class SimTileModel(
     val problem: String? = null,
     /** For the data SIM: how the phone reaches the internet, e.g. "Wi-Fi + VPN". */
     val internetVia: String? = null,
+    /** Airplane mode is on, so this SIM has no cellular connection. */
+    val airplaneMode: Boolean = false,
+    /** Solid green when carrying the internet, dotted when it would take over if Wi-Fi went away. */
+    val role: TileRole = TileRole.NONE,
 )
+
+/** How a tile relates to the internet connection, shown by its border. */
+enum class TileRole {
+    /** Not involved: plain grey outline. */
+    NONE,
+
+    /** Carrying the internet right now: solid green outline. */
+    ACTIVE,
+
+    /** Would carry the internet if the current connection (e.g. Wi-Fi) dropped: dotted green outline. */
+    FALLBACK,
+}
 
 /** Green used to mark the SIM carrying mobile data, readable in light and dark themes. */
 @Composable
 fun dataGreen(): Color = if (isSystemInDarkTheme()) Color(0xFF6CCB77) else Color(0xFF1E8E3E)
 
-private val TileShape = RoundedCornerShape(20.dp)
+private val TileCorner = 20.dp
+private val TileShape = RoundedCornerShape(TileCorner)
+
+/** Card border for [role]: solid green for ACTIVE, nothing for FALLBACK (drawn by [roleOutline]), grey otherwise. */
+@Composable
+fun roleBorder(role: TileRole): BorderStroke = when (role) {
+    TileRole.ACTIVE -> BorderStroke(3.dp, dataGreen())
+    TileRole.FALLBACK -> BorderStroke(1.dp, Color.Transparent)
+    TileRole.NONE -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+}
+
+/** Light green fill behind the tile carrying the internet. */
+@Composable
+fun roleContainer(role: TileRole): Color =
+    if (role == TileRole.ACTIVE) dataGreen().copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface
+
+/** Draws the dotted green outline of a FALLBACK tile; no-op for other roles. */
+@Composable
+fun Modifier.roleOutline(role: TileRole): Modifier {
+    if (role != TileRole.FALLBACK) return this
+    val green = dataGreen()
+    return dottedBorder(green, width = 3.dp, gap = 8.dp, corner = TileCorner)
+}
+
+private fun Modifier.dottedBorder(color: Color, width: Dp, gap: Dp, corner: Dp): Modifier = drawWithContent {
+    drawContent()
+    val w = width.toPx()
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(w / 2, w / 2),
+        size = Size(size.width - w, size.height - w),
+        cornerRadius = CornerRadius(corner.toPx() - w / 2),
+        style = Stroke(
+            width = w,
+            cap = StrokeCap.Round,
+            // A near-zero dash with round caps draws dots.
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.01f, gap.toPx() + w)),
+        ),
+    )
+}
 
 /**
- * One active SIM. The SIM carrying mobile data gets a thick green outline and a "Mobile data" tag;
+ * One active SIM. The outline follows [SimTileModel.role]: solid green with a "Mobile data" tag
+ * while this SIM carries the internet, dotted green with "Standby" while it is the fallback behind
+ * Wi-Fi, plain when it can't carry data (airplane mode, no service, data off);
  * network terms are tappable and call [onTerm] to explain themselves.
  */
 @Composable
 fun SimTile(sim: SimTileModel, showDetail: Boolean, onTerm: (Term) -> Unit, modifier: Modifier = Modifier) {
     val green = dataGreen()
     OutlinedCard(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().roleOutline(sim.role),
         shape = TileShape,
-        border = if (sim.isData) {
-            BorderStroke(3.dp, green)
-        } else {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        },
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = if (sim.isData) green.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface,
-        ),
+        border = roleBorder(sim.role),
+        colors = CardDefaults.outlinedCardColors(containerColor = roleContainer(sim.role)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -88,7 +147,12 @@ fun SimTile(sim: SimTileModel, showDetail: Boolean, onTerm: (Term) -> Unit, modi
                 )
                 if (sim.isEmbedded) TermText("eSIM", onTerm, MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.weight(1f))
-                if (sim.isData) Tag("Mobile data", green, Color.White)
+                if (sim.airplaneMode) AirplaneModeIcon()
+                when (sim.role) {
+                    TileRole.ACTIVE -> Tag("Mobile data", green, Color.White)
+                    TileRole.FALLBACK -> Tag("Standby", green.copy(alpha = 0.15f), green)
+                    TileRole.NONE -> Unit
+                }
             }
             Text(sim.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             sim.carrier?.takeIf { it.isNotBlank() && it != sim.name }?.let {
@@ -143,7 +207,7 @@ fun SimTile(sim: SimTileModel, showDetail: Boolean, onTerm: (Term) -> Unit, modi
 }
 
 @Composable
-private fun Tag(text: String, background: Color, foreground: Color) {
+fun Tag(text: String, background: Color, foreground: Color) {
     Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
         Text(
             text,

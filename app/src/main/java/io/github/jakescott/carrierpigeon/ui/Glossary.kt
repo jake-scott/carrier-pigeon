@@ -85,6 +85,63 @@ object Glossary {
         "A virtual private network. Your traffic is tunnelled through a VPN app, on top of " +
             "Wi-Fi or mobile data.",
     )
+    private val CELLULAR = Term(
+        "Cellular",
+        "Mobile data from a SIM. The phone uses it when it isn't connected to Wi-Fi (or Wi-Fi " +
+            "has no internet). The tiles below show which SIM is carrying it.",
+    )
+    private val WIFI_7 = Term(
+        "Wi-Fi 7",
+        "802.11be, the newest Wi-Fi generation. It can use very wide channels and several bands " +
+            "at once, for the highest speeds and lowest latency. Both the phone and router must support it.",
+    )
+    private val WIFI_6E = Term(
+        "Wi-Fi 6E",
+        "Wi-Fi 6 on the 6 GHz band. The extra spectrum is less crowded, so it's often faster " +
+            "and steadier, but 6 GHz doesn't reach as far through walls.",
+    )
+    private val WIFI_6 = Term(
+        "Wi-Fi 6",
+        "802.11ax. Faster than Wi-Fi 5 and much better when lots of devices share one network.",
+    )
+    private val WIFI_5 = Term(
+        "Wi-Fi 5",
+        "802.11ac, on the 5 GHz band. Still common and fast enough for most uses.",
+    )
+    private val WIFI_4 = Term(
+        "Wi-Fi 4",
+        "802.11n, an older generation. It works on 2.4 GHz and 5 GHz but is noticeably slower " +
+            "than Wi-Fi 5 or 6.",
+    )
+    private val WIFI_OLD = Term(
+        "Older Wi-Fi",
+        "Wi-Fi 1, 2 and 3 are the original 802.11b, 802.11a and 802.11g standards, from around " +
+            "1999 to 2003. Much slower than anything since. The Android emulator's virtual Wi-Fi " +
+            "also reports itself this way.",
+    )
+    private val WPA3 = Term(
+        "WPA3",
+        "The newest Wi-Fi security. It protects the password against guessing attacks and keeps " +
+            "past traffic safe even if the password later leaks.",
+    )
+    private val WPA2 = Term(
+        "WPA2",
+        "Wi-Fi Protected Access 2, the most common Wi-Fi security. Fine with a strong password; " +
+            "WPA3 is newer and stronger.",
+    )
+    private val WEP = Term(
+        "WEP",
+        "A very old Wi-Fi security scheme that can be broken in minutes. Treat the network as open.",
+    )
+    private val OPEN = Term(
+        "Open",
+        "No Wi-Fi password or encryption. Others nearby can see your traffic unless the app or " +
+            "website encrypts it (most do, over HTTPS).",
+    )
+    private val ENHANCED_OPEN = Term(
+        "Enhanced Open",
+        "No password, but each device's traffic is still encrypted (OWE), so others nearby can't read it.",
+    )
 
     /**
      * Phrases matched in labels, longest first so "LTE-A Pro" wins over "LTE" and "5G+" over "5G".
@@ -107,7 +164,21 @@ object Glossary {
         "3G" to THREE_G,
         "2G" to TWO_G,
         "eSIM" to ESIM,
+        "Enhanced Open" to ENHANCED_OPEN,
+        "Wi-Fi 7" to WIFI_7,
+        "Wi-Fi 6E" to WIFI_6E,
+        "Wi-Fi 6" to WIFI_6,
+        "Wi-Fi 5" to WIFI_5,
+        "Wi-Fi 4" to WIFI_4,
+        "Wi-Fi 3" to WIFI_OLD,
+        "Wi-Fi 2" to WIFI_OLD,
+        "Wi-Fi 1" to WIFI_OLD,
         "Wi-Fi" to WIFI,
+        "Cellular" to CELLULAR,
+        "WPA3" to WPA3,
+        "WPA2" to WPA2,
+        "WEP" to WEP,
+        "Open" to OPEN,
         "VPN" to VPN,
     ).sortedByDescending { it.first.length }
 

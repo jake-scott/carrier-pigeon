@@ -36,8 +36,16 @@ class AppSettings(context: Context) {
         store.edit { it[ASKED_PHONE_ACCESS] = true }
     }
 
+    /** True once we have shown the location prompt (for the Wi-Fi name). See [askedForPhoneAccess]. */
+    suspend fun askedForLocationAccess(): Boolean = store.data.first()[ASKED_LOCATION_ACCESS] ?: false
+
+    suspend fun setAskedForLocationAccess() {
+        store.edit { it[ASKED_LOCATION_ACCESS] = true }
+    }
+
     private companion object {
         val SHOW_NETWORK_DETAIL = booleanPreferencesKey("show_network_detail")
         val ASKED_PHONE_ACCESS = booleanPreferencesKey("asked_phone_access")
+        val ASKED_LOCATION_ACCESS = booleanPreferencesKey("asked_location_access")
     }
 }

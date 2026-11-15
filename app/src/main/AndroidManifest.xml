@@ -6,6 +6,11 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Network callbacks that wake us when the cellular data network changes. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Wi-Fi tile: whether Wi-Fi is on, plus generation, security and link speed. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Only so Android reveals the Wi-Fi network name (SSID). Asked for from the Wi-Fi tile, never on open. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Re-register the network callback after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

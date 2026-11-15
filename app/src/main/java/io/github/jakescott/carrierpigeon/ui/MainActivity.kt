@@ -42,9 +42,12 @@ import io.github.jakescott.carrierpigeon.data.AppSettings
 import io.github.jakescott.carrierpigeon.data.DataSimRefresher
 import io.github.jakescott.carrierpigeon.data.DataSimResolver
 import io.github.jakescott.carrierpigeon.data.DataSimState
+import io.github.jakescott.carrierpigeon.data.DataStatus
 import io.github.jakescott.carrierpigeon.data.DisplayInfoTracker
 import io.github.jakescott.carrierpigeon.data.StateStore
 import io.github.jakescott.carrierpigeon.data.SwitchLog
+import io.github.jakescott.carrierpigeon.data.WifiReader
+import io.github.jakescott.carrierpigeon.data.WifiStatus
 import io.github.jakescott.carrierpigeon.widget.CarrierPigeonWidget
 import kotlinx.coroutines.launch
 
@@ -142,6 +145,40 @@ private fun MainScreen(accessRequests: Int) {
         if (accessRequests > 0 || !settings.askedForPhoneAccess()) showRationale = true
     }
 
+    // Location access, only so Android will tell us the Wi-Fi network's name. Asked for only when
+    // the user taps Allow on the Wi-Fi tile, never on open.
+    val wifiReader = remember { WifiReader(app) }
+    var hasLocation by remember { mutableStateOf(wifiReader.hasLocationPermission()) }
+    LaunchedEffect(state) { hasLocation = wifiReader.hasLocationPermission() }
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        hasLocation = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
+    }
+    val requestLocationAccess: () -> Unit = {
+        scope.launch {
+            val blocked = settings.askedForLocationAccess() &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)
+            if (blocked) {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                )
+            } else {
+                settings.setAskedForLocationAccess()
+                locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            }
+        }
+    }
+    var showLocationRationale by rememberSaveable { mutableStateOf(false) }
+    // Registered again once location is granted, so the callback can include the network name.
+    val wifiUpdates = remember(hasLocation) { wifiReader.updates() }
+    val wifi by wifiUpdates.collectAsState(initial = null)
+    val ssidHint = wifi?.takeIf { it.connected && it.ssid == null }?.let {
+        when {
+            !hasLocation -> SsidHint.NEEDS_PERMISSION
+            !wifiReader.locationEnabled() -> SsidHint.LOCATION_OFF
+            else -> null
+        }
+    }
+
     val sims = remember(state, hasPermission) { resolver.activeSubscriptions() }
     // Redraw the tiles when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
     val displayInfoVersion by DisplayInfoTracker.version.collectAsState()
@@ -159,6 +196,10 @@ private fun MainScreen(accessRequests: Int) {
 
             override fun allowPhoneAccess() {
                 showRationale = true
+            }
+
+            override fun allowLocationAccess() {
+                showLocationRationale = true
             }
 
             override fun refresh() {
@@ -185,6 +226,10 @@ private fun MainScreen(accessRequests: Int) {
             showDetail = showDetail,
             needsPhoneAccess = !hasPermission,
             notice = state?.takeIf { !it.hasActiveSub }?.let { "No SIM is carrying mobile data" },
+            internet = internetHeadline(state, wifi),
+            wifi = wifi,
+            wifiCarriesInternet = state?.access == WIFI_ACCESS,
+            ssidHint = ssidHint,
         ),
         actions,
     )
@@ -193,6 +238,61 @@ private fun MainScreen(accessRequests: Int) {
             onContinue = { showRationale = false; requestPhoneAccess() },
             onDismiss = { showRationale = false },
         )
+    }
+    if (showLocationRationale) {
+        LocationAccessRationale(
+            onContinue = { showLocationRationale = false; requestLocationAccess() },
+            onDismiss = { showLocationRationale = false },
+        )
+    }
+}
+
+/** Shown before the system location prompt, which doesn't say why a SIM app wants location. */
+@Composable
+private fun LocationAccessRationale(onContinue: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Why location access?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Android treats the name of your Wi-Fi network as location information, so it only tells apps with location access which network you're on.")
+                Text("Carrier Pigeon uses it only to show the Wi-Fi name. It never tracks, stores or shares where you are. Choose \"Precise\": Android hides the name from apps with only approximate location.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onContinue) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+    )
+}
+
+/** What DataSimResolver reports as the access when the default network is Wi-Fi. */
+private const val WIFI_ACCESS = "Wi-Fi"
+
+/** Access labels for other non-cellular transports; anything else is a cellular network type. */
+private val NON_CELLULAR_ACCESS = setOf("Ethernet", "Bluetooth", "USB")
+
+/** True when the default network is the data SIM, i.e. [access] is a network type like "5G NSA". */
+private fun isCellularAccess(access: String): Boolean =
+    access != DataSimResolver.NO_DATA && access != WIFI_ACCESS && access != "Connected" && access !in NON_CELLULAR_ACCESS
+
+/**
+ * The headline at the top: "Internet via Wi-Fi" or "Internet via Cellular" (or Ethernet etc.),
+ * from the transport of the default network, or "No internet".
+ */
+private fun internetHeadline(state: DataSimState?, wifi: WifiStatus?): InternetHeadline? {
+    state ?: return null
+    val vpn = if (state.vpn) " + VPN" else ""
+    val airplane = state.status == DataStatus.AIRPLANE_MODE
+    return when (state.access) {
+        DataSimResolver.NO_DATA -> InternetHeadline(
+            "No internet",
+            subtitle = if (airplane) "Airplane mode is on" else null,
+            airplaneMode = airplane,
+        )
+        WIFI_ACCESS -> InternetHeadline("Internet via Wi-Fi$vpn", subtitle = wifi?.ssid)
+        in NON_CELLULAR_ACCESS -> InternetHeadline("Internet via ${state.access}$vpn")
+        "Connected" -> InternetHeadline("Internet connected$vpn")
+        // Anything else is the cellular network type, e.g. "5G NSA" or "LTE".
+        else -> InternetHeadline("Internet via Cellular$vpn", subtitle = "${state.label} · ${state.access}")
     }
 }
 
@@ -218,6 +318,14 @@ private fun PhoneAccessRationale(onContinue: () -> Unit, onDismiss: () -> Unit) 
  * single tile for the data SIM built from what the widget knows.
  */
 private fun simTiles(sims: List<SubscriptionInfo>, state: DataSimState?, resolver: DataSimResolver): List<SimTileModel> {
+    val airplane = state?.status == DataStatus.AIRPLANE_MODE
+    // The data SIM is solid green while it carries the internet, dotted while it waits behind
+    // Wi-Fi (or Ethernet), and plain when it couldn't take over (airplane mode, no service, data off).
+    val dataRole = when {
+        state == null || state.cellularUnavailable -> TileRole.NONE
+        isCellularAccess(state.access) -> TileRole.ACTIVE
+        else -> TileRole.FALLBACK
+    }
     if (sims.isEmpty()) {
         if (state == null || !state.hasActiveSub) return emptyList()
         return listOf(
@@ -233,6 +341,8 @@ private fun simTiles(sims: List<SubscriptionInfo>, state: DataSimState?, resolve
                 isDefaultData = !state.isTemporarySwitch,
                 problem = state.status.text,
                 internetVia = state.accessLine,
+                airplaneMode = airplane,
+                role = dataRole,
             ),
         )
     }
@@ -253,6 +363,8 @@ private fun simTiles(sims: List<SubscriptionInfo>, state: DataSimState?, resolve
             isDefaultData = info.subscriptionId == state?.defaultSubId,
             problem = if (isData) state?.status?.text else null,
             internetVia = if (isData) state?.accessLine else null,
+            airplaneMode = airplane,
+            role = if (isData) dataRole else TileRole.NONE,
         )
     }
 }

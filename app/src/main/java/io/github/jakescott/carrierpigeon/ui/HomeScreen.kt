@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package io.github.jakescott.carrierpigeon.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
+import io.github.jakescott.carrierpigeon.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -43,6 +52,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.jakescott.carrierpigeon.data.WifiStatus
 
 /** What the home screen shows. Plain data, so the screen can be previewed without a phone. */
 data class HomeState(
@@ -51,12 +61,21 @@ data class HomeState(
     val needsPhoneAccess: Boolean,
     /** Shown above the tiles when there's something to say about data overall, e.g. "No data SIM". */
     val notice: String? = null,
+    /** "Internet via Wi-Fi" etc., at the top of the screen. */
+    val internet: InternetHeadline? = null,
+    /** Null until the first reading. */
+    val wifi: WifiStatus? = null,
+    /** The phone is reaching the internet over Wi-Fi right now. */
+    val wifiCarriesInternet: Boolean = false,
+    /** Why the Wi-Fi name is hidden, if it is. */
+    val ssidHint: SsidHint? = null,
 )
 
 /** What the home screen can ask for. */
 interface HomeActions {
     fun setShowDetail(show: Boolean)
     fun allowPhoneAccess()
+    fun allowLocationAccess()
     fun refresh()
     /** Newest first. */
     fun readLog(): List<String>
@@ -65,7 +84,8 @@ interface HomeActions {
 }
 
 /**
- * The app's one screen: the "Show network detail" switch, then a tile per active SIM. Refresh and
+ * The app's one screen: how the phone reaches the internet, a Wi-Fi tile, a tile per active SIM,
+ * then the "Show network detail" switch. Refresh and
  * the switch log live in the menu at the top right.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,7 +99,12 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Carrier Pigeon") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        AppIcon(36.dp)
+                        Text("Carrier Pigeon")
+                    }
+                },
                 actions = {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Default.Menu, contentDescription = "Menu")
@@ -115,12 +140,26 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { DetailSwitch(state.showDetail, actions::setShowDetail) }
+            state.internet?.let { headline ->
+                item { InternetHeader(headline, onTerm = { term = it }) }
+            }
             if (state.needsPhoneAccess) {
                 item { PhoneAccessCard(actions::allowPhoneAccess) }
             }
             state.notice?.let { notice ->
                 item { Text(notice, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge) }
+            }
+            state.wifi?.let { wifi ->
+                item {
+                    WifiTile(
+                        wifi,
+                        carriesInternet = state.wifiCarriesInternet,
+                        showDetail = state.showDetail,
+                        ssidHint = state.ssidHint,
+                        onAllowLocation = actions::allowLocationAccess,
+                        onTerm = { term = it },
+                    )
+                }
             }
             if (state.sims.isEmpty()) {
                 item {
@@ -146,6 +185,7 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
                     SimTile(sim, state.showDetail, onTerm = { term = it })
                 }
             }
+            item { DetailSwitch(state.showDetail, actions::setShowDetail) }
         }
     }
 
@@ -162,6 +202,19 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
     }
 }
 
+/**
+ * The launcher icon, drawn from its two layers. Compose can't load the adaptive-icon mipmap, so
+ * stack the 108dp background and foreground and crop to the middle 72dp a launcher shows.
+ */
+@Composable
+private fun AppIcon(size: Dp) {
+    Box(Modifier.size(size).clip(CircleShape), contentAlignment = Alignment.Center) {
+        val layer = Modifier.requiredSize(size * 108f / 72f)
+        Image(painterResource(R.drawable.ic_launcher_background), contentDescription = null, modifier = layer)
+        Image(painterResource(R.drawable.ic_launcher_foreground), contentDescription = null, modifier = layer)
+    }
+}
+
 @Composable
 private fun DetailSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -172,11 +225,6 @@ private fun DetailSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text("Show network detail", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "What's under the network type, e.g. \"LTE + NR\" under 5G NSA. Also shown on the widget.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
             Switch(checked = checked, onCheckedChange = onChange)
         }
