@@ -1,6 +1,8 @@
 # Carrier Pigeon
 
-An Android home-screen widget that shows which SIM is currently carrying your mobile data, so you can see when your phone automatically switches between eSIMs.
+An Android app and home-screen widget that shows which SIM is carrying your mobile data and how your phone is reaching the internet right now, so you can see when it quietly switches between SIMs or drops from Wi-Fi to mobile data.
+
+Application ID `dev.jakethesnake.carrierpigeon`. Android 11 (API 30) or later, on a phone with telephony. English, French and Spanish.
 
 Licensed under the [Apache License 2.0](LICENSE).
 
@@ -8,12 +10,20 @@ Licensed under the [Apache License 2.0](LICENSE).
 
 The Apache License covers the code, not the "Carrier Pigeon" name or the pigeon icon. Forks need a different name and icon. See [TRADEMARKS.md](TRADEMARKS.md) for the details and the list of excluded artwork files.
 
-## Status: proof of concept
+## What it shows
 
-This build is a spike to confirm, on a real phone, that every automatic data SIM switch is reported. It contains:
+### The app
 
-- A widget. Top line: the carrier carrying mobile data, marked **default** (your data SIM in Settings) or **backup** (the phone moved data to another SIM). Bottom line: how the phone is reaching the internet right now: Wi-Fi, a mobile network, or No data, with "+ VPN" when the default route goes over a VPN. The mobile network is shown the way the status bar sees it (turn on "Show network detail" in the app to also see what is underneath it, e.g. "LTE + NR"): **5G SA**, **5G NSA** (LTE + NR: registered on LTE with 5G added on top, which is why other apps that read the raw network type say LTE), **5G+ NSA** (high-band NR), **LTE-A Pro** (sometimes branded "5G E", but LTE), **LTE+** (carrier aggregation), **LTE**, 3G or 2G. The dot is the SIM's colour, grey when that SIM can't carry data (airplane mode, mobile data off, no service). Tap it to open the app, which also refreshes the widget.
-- An app screen with a tile for each active SIM: its slot, name, carrier and network, with the SIM carrying mobile data outlined in green. Tap a term such as LTE, 5G, NSA or SA for a short explanation. Refresh and the switch log (view, share, clear) are in the menu at the top right.
+- **Internet headline.** One line at the top says how the phone is online: "Internet via" Wi-Fi (with the network name) or a SIM's carrier, or Ethernet, Bluetooth, USB, with "+ VPN" when the default route goes over a VPN. It says "No internet" or "Airplane mode is on" when that's the case.
+- **A tile for each active SIM.** Each tile shows the slot, the SIM's name, its carrier and network, and whether it's your **default** data SIM or a **backup** the phone moved data to. The border shows how the tile relates to the internet. Solid green means it's carrying the internet now. Dotted green means it's on standby and would take over if Wi-Fi dropped. Grey means it isn't involved. A SIM that can't carry data says why: airplane mode, mobile data off, or no service.
+- **A Wi-Fi tile.** Shows the network name, security, band, signal and link speed, with the same border scheme. Android only reveals the Wi-Fi name to apps with precise location access. The app asks for it only to show the name, and explains why.
+- **Network labels the way the status bar shows them:** **5G SA**, **5G NSA**, **5G+ NSA** (high-band NR), **LTE-A Pro** (sometimes branded "5G E", but it's LTE), **LTE+** (carrier aggregation), **LTE**, 3G or 2G. 5G NSA means the phone is registered on LTE with 5G added on top, which is why apps that read the raw network type say LTE. Turn on **Show network detail** to also see what's underneath, such as "LTE + NR".
+- **Tap a term** such as LTE, 5G, NSA or SA for a short explanation.
+- **The menu** at the top right has Refresh, the switch log (view, share, clear) and, on Android 13 and later, the app's language.
+
+### The widget
+
+The "Data SIM" widget's top line names the carrier carrying mobile data, marked **default** or **backup**. Its bottom line says how the phone is reaching the internet: Wi-Fi, a mobile network, or No data, plus "+ VPN". The dot is the SIM's colour, and turns grey when that SIM can't carry data. Tap the widget to open the app, which also refreshes it. The widget follows the phone's language, and the app's language if you've set one.
 
 ## How it detects switches
 
@@ -29,17 +39,26 @@ This build is a spike to confirm, on a real phone, that every automatic data SIM
 
 Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiveDataSubscriptionId()`, writes the result to DataStore and redraws the widget. The widget itself only reads stored state.
 
-## Testing the spike
+## Installing
 
-1. Install the debug APK from the latest GitHub Actions run (artifact `carrier-pigeon-debug`), or build with `./gradlew assembleProdDebug`.
-2. Open the app and allow phone access when it asks. (If you add the widget first, it says "Tap to allow phone access"; tapping it opens the app and asks.)
-3. Add the "Data SIM" widget to your home screen.
-4. Use the phone normally for a day, ideally somewhere coverage changes, or force a switch by making a call on the non-data SIM.
-5. Open the app, open the menu at the top right and tap **Share log**. Lines marked `SWITCH` are switches and `NOTE` lines record process starts and listener registration; `reason=` shows which path reported it, and `network=` cross-checks the sub behind the cellular network.
+- **Google Play (internal testing).** Testers on the internal testing list get each build from `main` through the Play Store.
+- **Dev builds (Firebase App Distribution).** Each push to `dev` goes to the App Distribution tester group as "Carrier Pigeon Dev" (`dev.jakethesnake.carrierpigeon.dev`). It installs beside the Play build, so you can run both.
+- **GitHub releases.** Each `vX.Y.Z` tag publishes a signed APK on the releases page, and F-Droid builds it from the same tag.
+- **Debug APK.** Every GitHub Actions run of `build.yml` attaches a debug build (artifact `carrier-pigeon-debug`, "Carrier Pigeon Debug"), signed with the throwaway debug key.
+
+On first launch, allow phone access so the app can read your SIM names and network types. Carrier Pigeon never makes or manages calls, even though Android's prompt mentions them. Location access is optional and only shows the Wi-Fi name. Then add the "Data SIM" widget from your home screen's widget picker.
+
+### Reporting a switch problem
+
+Open the menu and tap **Share log**. Lines marked `SWITCH` are data SIM switches. `NOTE` lines record process starts and listener registration. `reason=` shows which detection path reported each line, and `network=` cross-checks the SIM behind the cellular network.
 
 ## Building
 
-Requires JDK 17 and the Android SDK (compileSdk 36). `./gradlew assembleProdDebug` builds a debug APK ("Carrier Pigeon Debug", its own package, installs beside any other build).
+Requires JDK 17 or later (CI uses 21) and the Android SDK (compileSdk 36).
+
+- `./gradlew assembleProdDebug` builds a debug APK ("Carrier Pigeon Debug", `dev.jakethesnake.carrierpigeon.debug`), which installs beside any other build.
+- `./gradlew testProdDebugUnitTest lintProdDebug` runs the unit tests and lint, as CI does.
+- `scripts/check_hardcoded_strings.sh` fails if UI code has an English string that isn't in `res/values`. Translations are in `res/values-fr` and `res/values-es`.
 
 Release builds are signed in CI with keys in Cloud KMS and are reproducible for F-Droid. See [docs/signing.md](docs/signing.md).
 
