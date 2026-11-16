@@ -1,9 +1,12 @@
 # Keeps the SHA-pinned actions in .github/workflows and the Gradle
 # dependencies (gradle/libs.versions.toml, the wrapper) up to date.
+# Pull requests go to dev, like every other change: dev builds reach testers
+# through Firebase first, and dev is merged to main to release.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     groups:
@@ -12,5 +15,6 @@ updates:
 
   - package-ecosystem: gradle
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
