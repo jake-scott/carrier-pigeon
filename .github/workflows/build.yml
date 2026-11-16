@@ -8,8 +8,9 @@ name: Build
 # the dev (Firebase) and release builds. Signed dev builds come from
 # release.yml.
 #
-# A v* tag's run finishing is also what starts a prod release:
-# release.yml, as committed on main, picks it up (see that file).
+# A v* tag's run finishing is also what starts a release, closed testing
+# for vX.Y.Z-rc.N and production for vX.Y.Z: release.yml, as committed on
+# main, picks it up (see that file).
 
 on:
   push:
