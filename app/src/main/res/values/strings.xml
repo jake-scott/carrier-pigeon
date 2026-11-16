@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  English (en-US) is the source language. Every string has a comment saying where it appears
+  and what its placeholders hold. <annotation term="…"> marks words a person can tap to see what
+  they mean; keep the tag around the matching words in your translation. Technical names such
+  as LTE, 5G, NR, Wi-Fi, WPA2 and VPN stay as they are, to match the phone's status bar.
+-->
+<resources>
+    <!-- Launcher label. A brand name: the same in every language. -->
+    <string name="app_name" translatable="false">Carrier Pigeon</string>
+    <!-- Name of the home-screen widget in the widget picker. -->
+    <string name="widget_name">Data SIM</string>
+    <!-- Description of the widget in the widget picker. -->
+    <string name="widget_description">Shows which SIM is carrying mobile data right now</string>
+
+    <!-- Top bar title. A brand name. -->
+    <string name="home_title" translatable="false">Carrier Pigeon</string>
+    <!-- Accessibility label for the menu button at the top right. -->
+    <string name="menu_open">Menu</string>
+    <!-- Menu item: read the SIM and network state again. -->
+    <string name="menu_refresh">Refresh</string>
+    <!-- Menu item: show the log of data SIM switches. -->
+    <string name="menu_switch_log">Switch log</string>
+    <!-- Menu item: share the switch log as text. -->
+    <string name="menu_share_log">Share log</string>
+    <!-- Menu item: delete the switch log. -->
+    <string name="menu_clear_log">Clear log</string>
+    <!-- Menu item (Android 13+): opens the system screen to pick this app's language. -->
+    <string name="menu_language">Language</string>
+
+    <!-- Heading above the SIM tiles. -->
+    <string name="home_active_sims">Active SIMs</string>
+    <!-- Hint under "Active SIMs". LTE and 5G are technical names; keep them. -->
+    <string name="home_terms_hint">Tap a term like LTE or 5G to see what it means</string>
+    <!-- Shown instead of SIM tiles when the phone has no active SIM. -->
+    <string name="home_no_sims">No active SIMs</string>
+    <!-- Warning above the tiles when no SIM is set for mobile data. -->
+    <string name="home_no_data_sim">No SIM is carrying mobile data</string>
+    <!-- Switch at the bottom of the screen: also show what is underneath the network badge, link speeds etc. -->
+    <string name="home_show_detail">Show network detail</string>
+
+    <!-- Confirmation dialog title before deleting the switch log. -->
+    <string name="clear_log_title">Clear the switch log?</string>
+    <!-- Confirmation dialog text before deleting the switch log. -->
+    <string name="clear_log_body">This deletes the record of SIM switches kept on this phone.</string>
+    <!-- Dialog title: the switch log. -->
+    <string name="log_title">Switch log</string>
+    <!-- Shown in the switch log dialog when the log is empty. -->
+    <string name="log_empty">Nothing logged yet.</string>
+    <!-- Subject line when sharing the switch log, e.g. by email. "Carrier Pigeon" is the app name. -->
+    <string name="log_share_subject">Carrier Pigeon switch log</string>
+    <!-- Title of the system share sheet for the switch log. -->
+    <string name="log_share_chooser">Share log</string>
+
+    <!-- Buttons. -->
+    <string name="action_clear">Clear</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+    <string name="action_share">Share</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_continue">Continue</string>
+    <string name="action_not_now">Not now</string>
+    <!-- Closes the popup that explains a term. -->
+    <string name="action_got_it">Got it</string>
+
+    <!-- Card shown when the app may not read phone state (the READ_PHONE_STATE permission). -->
+    <string name="phone_card_body">Allow phone access to see all your SIMs, their names and network type. Without it the app and widget can only show the carrier name stored on the data SIM.</string>
+    <!-- Small print on the phone access card. "Carrier Pigeon" is the app name. -->
+    <string name="phone_card_note">Carrier Pigeon only reads SIM and network info. It never makes or manages calls.</string>
+    <!-- Dialog before the system permission prompt for phone access. -->
+    <string name="phone_rationale_title">Why phone access?</string>
+    <string name="phone_rationale_body">Carrier Pigeon needs it to read your SIM names and which network each SIM is on (4G, 5G and so on), so the widget can show them.</string>
+    <!-- "make and manage phone calls" quotes Android's own permission prompt; use the wording Android uses in your language. -->
+    <string name="phone_rationale_calls">Android groups this with calls, so its prompt will say \"make and manage phone calls\". Carrier Pigeon never makes, answers or manages calls, and it doesn\'t read your call log or contacts.</string>
+    <!-- Dialog before the system permission prompt for location, which is only used to read the Wi-Fi name. -->
+    <string name="location_rationale_title">Why location access?</string>
+    <string name="location_rationale_body">Android treats the name of your Wi-Fi network as location information, so it only tells apps with location access which network you\'re on.</string>
+    <!-- "Precise" is the option on Android's location prompt; use the wording Android uses in your language. -->
+    <string name="location_rationale_precise">Carrier Pigeon uses it only to show the Wi-Fi name. It never tracks, stores or shares where you are. Choose \"Precise\": Android hides the name from apps with only approximate location.</string>
+
+    <!-- Large headline at the top of the screen: how the phone reaches the internet. -->
+    <string name="headline_no_internet">No internet</string>
+    <!-- Under "No internet", and the accessibility label of the airplane icon. -->
+    <string name="airplane_mode_on">Airplane mode is on</string>
+    <string name="headline_via_wifi">Internet via <annotation term="wifi">Wi-Fi</annotation></string>
+    <!-- "Cellular" is mobile data from a SIM; tapping it explains the word. -->
+    <string name="headline_via_cellular">Internet via <annotation term="cellular">Cellular</annotation></string>
+    <string name="headline_via_ethernet">Internet via Ethernet</string>
+    <string name="headline_via_bluetooth">Internet via Bluetooth</string>
+    <string name="headline_via_usb">Internet via USB</string>
+    <!-- Connected through something other than Wi-Fi, mobile data, Ethernet, Bluetooth or USB. -->
+    <string name="headline_connected">Internet connected</string>
+    <!-- Under "Internet via Cellular": SIM name · network, e.g. "Vodafone · 5G NSA". -->
+    <string name="headline_cellular_subtitle" translatable="false">%1$s · %2$s</string>
+    <!-- Adds a VPN to any connection, e.g. "Internet via Wi-Fi + VPN". -->
+    <string name="with_vpn" translatable="false">%1$s + <annotation term="vpn">VPN</annotation></string>
+
+    <!-- How the data SIM's tile and the widget describe the connection. Cellular with an unknown network type. -->
+    <string name="access_mobile_data">Mobile data</string>
+    <!-- Connected through something other than Wi-Fi, mobile data, Ethernet, Bluetooth or USB. -->
+    <string name="access_connected">Connected</string>
+    <!-- No internet connection at all. -->
+    <string name="access_none">No data</string>
+    <string name="access_wifi" translatable="false">Wi-Fi</string>
+    <string name="access_ethernet" translatable="false">Ethernet</string>
+    <string name="access_bluetooth" translatable="false">Bluetooth</string>
+    <string name="access_usb" translatable="false">USB</string>
+
+    <!-- Why the data SIM can't carry data. Used in "%1$s: no mobile data right now". -->
+    <string name="status_airplane_mode">Airplane mode</string>
+    <string name="status_data_off">Mobile data off</string>
+    <string name="status_no_service">No service</string>
+
+    <!-- SIM tile, top left: the SIM slot, e.g. "SIM 1". %1$d is the slot number. -->
+    <string name="sim_slot">SIM %1$d</string>
+    <!-- SIM tile, top left, when the slot is unknown. -->
+    <string name="sim_generic">SIM</string>
+    <!-- Name for a SIM known only by its subscription number, e.g. "SIM #3". -->
+    <string name="sim_sub_id">SIM #%1$d</string>
+    <!-- Widget top line when no SIM is set for mobile data. -->
+    <string name="sim_no_data_sim">No data SIM</string>
+    <!-- Tag on the tile of the SIM carrying the internet right now. -->
+    <string name="sim_tag_mobile_data">Mobile data</string>
+    <!-- Tag on the data SIM's tile when Wi-Fi is carrying the internet, so the SIM would take over if Wi-Fi went away. -->
+    <string name="sim_tag_standby">Standby</string>
+    <!-- SIM tile, instead of the network badge, when the SIM has no network. -->
+    <string name="sim_no_network">No network</string>
+    <!-- SIM tile: why there is no mobile data. %1$s is e.g. "Airplane mode" or "No service". -->
+    <string name="sim_problem">%1$s: no mobile data right now</string>
+    <!-- SIM tile: how the phone reaches the internet. %1$s is e.g. "Wi-Fi + VPN" or "5G NSA". -->
+    <string name="sim_internet_via">Internet via: %1$s</string>
+    <!-- SIM tile: this is the SIM chosen for mobile data in Settings. -->
+    <string name="sim_default_data">Your default data SIM</string>
+    <!-- SIM tile: the phone moved mobile data to this SIM for now (e.g. during a call or for better coverage). -->
+    <string name="sim_backup_data">Backup SIM: data moved here from your default SIM</string>
+    <!-- SIM tile: the SIM chosen for mobile data in Settings, while data is temporarily on the other SIM. -->
+    <string name="sim_default_data_elsewhere">Your default data SIM (data is on the other SIM for now)</string>
+    <!-- SIM tile detail: Android's internal subscription number. -->
+    <string name="sim_subscription">Subscription %1$d</string>
+
+    <!-- Wi-Fi tile, top left. -->
+    <string name="wifi_title" translatable="false">Wi-Fi</string>
+    <!-- Tag on the Wi-Fi tile when Wi-Fi is carrying the internet. -->
+    <string name="wifi_tag_internet">Internet</string>
+    <string name="wifi_off_airplane">No Wi-Fi: off in airplane mode</string>
+    <string name="wifi_off">No Wi-Fi: Wi-Fi is off</string>
+    <string name="wifi_disconnected">No Wi-Fi connection</string>
+    <!-- Shown instead of the Wi-Fi network name when Android hides it. -->
+    <string name="wifi_name_hidden">Network name hidden</string>
+    <string name="wifi_name_needs_location">Android only shows the name to apps with location access.</string>
+    <!-- "Location" is the quick settings tile of that name; use Android's wording in your language. -->
+    <string name="wifi_name_location_off">Turn on Location in quick settings to see the network name.</string>
+    <!-- Wi-Fi security. %1$s is e.g. "WPA2". -->
+    <string name="wifi_security">Security: %1$s</string>
+    <!-- Wi-Fi link speeds in megabits per second. Mbps is a unit symbol. -->
+    <string name="wifi_link_speed_both">Link speed: %1$d Mbps down, %2$d Mbps up</string>
+    <string name="wifi_link_speed_down">Link speed: %1$d Mbps down</string>
+    <string name="wifi_link_speed_up">Link speed: %1$d Mbps up</string>
+    <!-- Fastest speed the connection supports. -->
+    <string name="wifi_max_speed">Max %1$d Mbps</string>
+    <!-- Signal strength. dBm is a unit symbol; %1$d is negative, e.g. -55. -->
+    <string name="wifi_signal">Signal %1$d dBm</string>
+    <!-- Wi-Fi band. %1$s is a number already formatted for your language, e.g. "2.4". -->
+    <string name="wifi_band">%1$s GHz</string>
+
+    <!-- Widget, before anything has been read. -->
+    <string name="widget_tap_to_load">Tap to load</string>
+    <!-- Widget bottom line without phone access. -->
+    <string name="widget_tap_to_allow">Tap to allow phone access</string>
+    <!-- The same, on a narrow widget. Keep it very short. -->
+    <string name="widget_tap_to_allow_short">Tap to allow</string>
+    <!-- Widget top line when the data SIM has no cellular connection (airplane mode, no service). -->
+    <string name="widget_no_cellular">No cellular</string>
+    <!-- Widget marker after the carrier name: data is on the SIM chosen in Settings. Lowercase, very short. -->
+    <string name="widget_marker_default">default</string>
+    <!-- Widget marker after the carrier name: the phone moved data to the other SIM. Lowercase, very short. -->
+    <string name="widget_marker_backup">backup</string>
+</resources>

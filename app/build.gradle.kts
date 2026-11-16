@@ -1,0 +1,133 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+}
+
+android {
+    namespace = "dev.jakethesnake.carrierpigeon"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "dev.jakethesnake.carrierpigeon"
+        minSdk = 30
+        targetSdk = 36
+        // Release APKs (and F-Droid, which rebuilds them from the tag) take
+        // these from the source, so a release is reproducible. Only dev APKs
+        // and Play bundles override the code, with -PdevVersionCode and
+        // -PplayVersionCode (release.yml).
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+
+    // dev is the Firebase testers' channel: its own package name and launcher
+    // label, signed with the dev key, so it installs beside the real app and
+    // can never be updated over it. prod is what Play (internal track, then
+    // production), F-Droid and GitHub releases get. See docs/signing.md.
+    flavorDimensions += "channel"
+    productFlavors {
+        create("dev") {
+            dimension = "channel"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            providers.gradleProperty("devVersionCode").orNull?.let { versionCode = it.toInt() }
+        }
+        create("prod") {
+            dimension = "channel"
+            // Play bundles from main only. F-Droid never builds them, so the
+            // release APK keeps the code above.
+            providers.gradleProperty("playVersionCode").orNull?.let { versionCode = it.toInt() }
+        }
+    }
+
+    buildTypes {
+        // Debug builds (build.yml's sideload artifact) get their own package
+        // too, signed with the throwaway debug key, so they install beside
+        // the dev and release builds.
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            // Pick "English (XA)" (long, accented text) or "Arabic (XB)" (right to left) in the
+            // system language settings to check layouts without a translation.
+            isPseudoLocalesEnabled = true
+        }
+        release {
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Release builds are left unsigned here. CI signs them with keys in
+            // Cloud KMS that never leave it (scripts/kms_sign.sh), and F-Droid
+            // copies that signature onto its own rebuild.
+            //
+            // Reproducible builds: the git commit AGP would otherwise record in
+            // META-INF/version-control-info.textproto depends on the checkout
+            // (F-Droid's build server, a shallow clone), so leave it out.
+            vcsInfo.include = false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    // Lists the languages in values-*/ for Android 13+'s per-app language setting. The default
+    // values/ folder is en-US (res/resources.properties). Only add a values-xx folder once that
+    // language is fully translated and reviewed, because it shows up in the setting.
+    androidResources {
+        generateLocaleConfig = true
+    }
+
+    lint {
+        // Translation and right-to-left mistakes fail the build. Compose Text("...") literals
+        // aren't covered by HardcodedText; scripts/check_hardcoded_strings.sh catches those.
+        error += listOf(
+            "MissingTranslation",
+            "ExtraTranslation",
+            "Untranslatable",
+            "StringFormatInvalid",
+            "StringFormatCount",
+            "StringFormatMatches",
+            "MissingQuantity",
+            "ImpliedQuantity",
+            "UnusedQuantity",
+            "HardcodedText",
+            "SetTextI18n",
+            "RtlHardcoded",
+            "RtlSymmetry",
+        )
+    }
+
+    testOptions {
+        // Android classes in unit tests return defaults instead of throwing "Stub!".
+        unitTests.isReturnDefaultValues = true
+    }
+
+    // Keep F-Droid reproducible builds possible: no dependency metadata blob in
+    // the APK (it is encrypted with a Google key, so F-Droid can't check it).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+dependencies {
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
+}
