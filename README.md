@@ -41,7 +41,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 
 ## Installing
 
-- **Google Play (internal testing).** Testers on the internal testing list get each build from `main` through the Play Store.
+- **Google Play.** Internal testers get each build from `main`. Closed testers get the builds tagged `vX.Y.Z-rc.N`, and production gets the same build when it's tagged `vX.Y.Z`.
 - **Dev builds (Firebase App Distribution).** Each push to `dev` goes to the App Distribution tester group as "Carrier Pigeon Dev" (`dev.jakethesnake.carrierpigeon.dev`). It installs beside the Play build, so you can run both.
 - **GitHub releases.** Each `vX.Y.Z` tag publishes a signed APK on the releases page, and F-Droid builds it from the same tag.
 - **Debug APK.** Every GitHub Actions run of `build.yml` attaches a debug build (artifact `carrier-pigeon-debug`, "Carrier Pigeon Debug"), signed with the throwaway debug key.
@@ -79,6 +79,6 @@ Each job that needs variables checks them first. When any are missing it warns a
 | `FIREBASE_DISTRIBUTOR` | `dev` | The account that uploads to Firebase App Distribution (bootstrap/ output `distribute_service_account`) |
 | `FIREBASE_APP_ID` | `dev` | The Firebase Android app, `1:<project number>:android:<hex>` (build/ output `firebase_android_app_ids`) |
 | `FIREBASE_TESTER_GROUP` | `dev` | The App Distribution tester group alias |
-| `PLAY_PUBLISHER` | `qa`, `prod` (or repository) | The Play publisher account: a Play Console user with release rights on this app only, bound to the `qa` and `prod` environments on `main` |
+| `PLAY_PUBLISHER` | `qa`, `prod` | The Play account for that environment: in `qa` the tester (build/ output `play_testers`; "Release apps to testing tracks" on this app only), in `prod` the publisher (`play_publishers`; production release rights on this app only) |
 
 From the command line: `gh variable set KMS_KEY --env dev --body 'projects/…'`, or without `--env` for a repository variable. See [docs/signing.md](docs/signing.md) for how the keys and accounts are set up.
