@@ -85,8 +85,11 @@
     <string name="wifi_link_speed_down">Débit de la liaison : %1$d Mbps en réception</string>
     <string name="wifi_link_speed_up">Débit de la liaison : %1$d Mbps en émission</string>
     <string name="wifi_max_speed">Max. %1$d Mbps</string>
-    <string name="wifi_signal">Signal %1$d dBm</string>
     <string name="wifi_band">%1$s GHz</string>
+
+    <string name="signal_bars">Puissance du signal : %1$d sur %2$d</string>
+    <string name="signal_unknown">Puissance du signal inconnue</string>
+    <string name="signal_dbm">Signal %1$d dBm</string>
 
     <string name="widget_tap_to_load">Touchez pour charger</string>
     <string name="widget_tap_to_allow">Touchez pour autoriser l’accès au téléphone</string>

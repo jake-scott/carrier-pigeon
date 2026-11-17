@@ -41,6 +41,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.jakethesnake.carrierpigeon.R
+import dev.jakethesnake.carrierpigeon.data.Signal
 
 /** Everything one SIM tile shows. Built from the platform in MainActivity; plain data so it can be previewed. */
 data class SimTileModel(
@@ -67,6 +68,8 @@ data class SimTileModel(
     val airplaneMode: Boolean = false,
     /** Solid green when carrying the internet, dotted when it would take over if Wi-Fi went away. */
     val role: TileRole = TileRole.NONE,
+    /** Live signal strength; null while unknown. Shown only while the SIM has a network. */
+    val signal: Signal? = null,
 )
 
 /** How a tile relates to the internet connection, shown by its border. */
@@ -162,7 +165,11 @@ fun SimTile(sim: SimTileModel, showDetail: Boolean, onTerm: (TermId) -> Unit, mo
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 if (sim.networkBadge != null) {
                     TermText(sim.networkBadge, onTerm, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                     sim.networkDetail?.takeIf { showDetail }?.let {
@@ -173,6 +180,8 @@ fun SimTile(sim: SimTileModel, showDetail: Boolean, onTerm: (TermId) -> Unit, mo
                             modifier = Modifier.padding(bottom = 2.dp),
                         )
                     }
+                    Spacer(Modifier.weight(1f))
+                    SignalBars(sim.signal, Modifier.padding(bottom = 4.dp))
                 } else {
                     Text(stringResource(R.string.sim_no_network), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -205,8 +214,12 @@ fun SimTile(sim: SimTileModel, showDetail: Boolean, onTerm: (TermId) -> Unit, mo
                 )
             }
             if (showDetail) {
+                val dbm = sim.signal?.dbm?.takeIf { sim.networkBadge != null }
                 Text(
-                    stringResource(R.string.sim_subscription, sim.subId),
+                    listOfNotNull(
+                        stringResource(R.string.sim_subscription, sim.subId),
+                        dbm?.let { stringResource(R.string.signal_dbm, it) },
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
