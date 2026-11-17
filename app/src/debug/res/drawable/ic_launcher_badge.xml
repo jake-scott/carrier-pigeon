@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carrier Pigeon icon artwork: not licensed under the Apache License. See TRADEMARKS.md. -->
+<!-- DBG pill over the pigeon's feet, inside the 66dp safe zone so no launcher
+     mask clips it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#1C2650"
+        android:strokeWidth="0.8"
+        android:pathData="M45.5,73.5 H62.5 A5.5,5.5 0 0 1 62.5,84.5 H45.5 A5.5,5.5 0 0 1 45.5,73.5 Z" />
+    <path
+        android:fillColor="#2E3340"
+        android:fillType="evenOdd"
+        android:pathData="M46.45,76.00 h1.6 a2.8,3 0 0 1 0,6 h-1.6 z M47.85,77.40 v3.2 h0.2 a1.4,1.6 0 0 0 0,-3.2 z M51.75,76.00 h2.4 a1.6,1.5 0 0 1 0,3 a1.7,1.5 0 0 1 0,3 h-2.4 z M53.10,77.20 v1.1 h0.95 a0.45,0.55 0 0 0 0,-1.1 z M53.10,79.70 v1.1 h1.0 a0.5,0.55 0 0 0 0,-1.1 z M60.99,77.07 a2.4,3 0 1 0 0.56,1.93 h-2.2 v1.1 h0.56 a1.05,1.6 0 1 1 0.04,-2.13 z" />
+</vector>
