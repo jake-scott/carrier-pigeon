@@ -158,10 +158,15 @@
     <string name="wifi_link_speed_up">Link speed: %1$d Mbps up</string>
     <!-- Fastest speed the connection supports. -->
     <string name="wifi_max_speed">Max %1$d Mbps</string>
-    <!-- Signal strength. dBm is a unit symbol; %1$d is negative, e.g. -55. -->
-    <string name="wifi_signal">Signal %1$d dBm</string>
     <!-- Wi-Fi band. %1$s is a number already formatted for your language, e.g. "2.4". -->
     <string name="wifi_band">%1$s GHz</string>
+
+    <!-- Signal strength bars on the SIM and Wi-Fi tiles, read out by screen readers. %1$d is how many bars are filled, %2$d the total, e.g. "3 of 4". -->
+    <string name="signal_bars">Signal strength: %1$d of %2$d bars</string>
+    <!-- The same, when the phone hasn't reported the signal strength. -->
+    <string name="signal_unknown">Signal strength unknown</string>
+    <!-- Signal strength detail on the SIM and Wi-Fi tiles. dBm is a unit symbol; %1$d is negative, e.g. -55. -->
+    <string name="signal_dbm">Signal %1$d dBm</string>
 
     <!-- Widget, before anything has been read. -->
     <string name="widget_tap_to_load">Tap to load</string>

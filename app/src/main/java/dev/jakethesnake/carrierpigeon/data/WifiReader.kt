@@ -43,6 +43,8 @@ data class WifiStatus(
     val maxMbps: Int? = null,
     /** Signal strength in dBm. */
     val rssi: Int? = null,
+    /** Signal as status-bar bars; null when unknown. */
+    val signal: Signal? = null,
 ) {
     /** Wi-Fi is off only because airplane mode switched it off. */
     val offForAirplane: Boolean get() = airplaneMode && !enabled
@@ -117,19 +119,24 @@ class WifiReader(context: Context) {
         val cm = app.getSystemService(ConnectivityManager::class.java)
         var wifiNetwork: Network? = null
         var lastInfo: WifiInfo? = null
+        // RSSI from the latest RSSI_CHANGED broadcast. Android only sends new capabilities when the
+        // signal crosses a bar, so this keeps the dBm current in between.
+        var latestRssi: Int? = null
         fun push() {
-            trySend(snapshot(if (wifiNetwork != null) lastInfo ?: legacyInfo() else null))
+            trySend(snapshot(if (wifiNetwork != null) lastInfo ?: legacyInfo() else null, latestRssi))
         }
 
         val handleCaps: (Network, NetworkCapabilities) -> Unit = { network, caps ->
             wifiNetwork = network
             lastInfo = caps.transportInfo as? WifiInfo
+            latestRssi = null
             push()
         }
         val handleLost: (Network) -> Unit = { network ->
             if (network == wifiNetwork) {
                 wifiNetwork = null
                 lastInfo = null
+                latestRssi = null
             }
             push()
         }
@@ -148,11 +155,18 @@ class WifiReader(context: Context) {
         cm.registerNetworkCallback(request, callback)
 
         // Wi-Fi switched on or off, or airplane mode toggled, with no network change to tell us.
+        // Also the signal strength, which changes far more often than the capabilities.
         val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) = push()
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == WifiManager.RSSI_CHANGED_ACTION) {
+                    latestRssi = intent.getIntExtra(WifiManager.EXTRA_NEW_RSSI, Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE }
+                }
+                push()
+            }
         }
         val filter = IntentFilter().apply {
             addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
+            addAction(WifiManager.RSSI_CHANGED_ACTION)
             addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
         }
         ContextCompat.registerReceiver(app, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -167,10 +181,12 @@ class WifiReader(context: Context) {
     @Suppress("DEPRECATION")
     private fun legacyInfo(): WifiInfo? = wifiManager?.connectionInfo?.takeIf { it.networkId != -1 }
 
-    private fun snapshot(info: WifiInfo?): WifiStatus {
+    /** [rssiOverride], when set, is a newer signal reading than the one in [info]. */
+    private fun snapshot(info: WifiInfo?, rssiOverride: Int? = null): WifiStatus {
         val enabled = wifiManager?.isWifiEnabled ?: false
         val airplane = airplaneMode()
         if (info == null || !enabled) return WifiStatus(enabled = enabled, airplaneMode = airplane, connected = false)
+        val rssi = (rssiOverride ?: info.rssi).takeIf { it > -127 && it < 0 }
         return WifiStatus(
             enabled = true,
             airplaneMode = airplane,
@@ -186,8 +202,15 @@ class WifiReader(context: Context) {
             rxMbps = info.rxLinkSpeedMbps.takeIf { it > 0 },
             txMbps = info.txLinkSpeedMbps.takeIf { it > 0 },
             maxMbps = maxOf(info.maxSupportedRxLinkSpeedMbps, info.maxSupportedTxLinkSpeedMbps).takeIf { it > 0 },
-            rssi = info.rssi.takeIf { it > -127 && it < 0 },
+            rssi = rssi,
+            signal = rssi?.let { signalOf(it) },
         )
+    }
+
+    /** Bars the way the status bar draws them: Android's own level for [rssi], scaled to four bars. */
+    private fun signalOf(rssi: Int): Signal? {
+        val wm = wifiManager ?: return null
+        return Signal.fromLevel(wm.calculateSignalLevel(rssi), wm.maxSignalLevel, rssi)
     }
 
     companion object {

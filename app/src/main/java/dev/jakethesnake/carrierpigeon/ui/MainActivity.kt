@@ -39,10 +39,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.updateAll
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.jakethesnake.carrierpigeon.R
 import dev.jakethesnake.carrierpigeon.data.Access
 import dev.jakethesnake.carrierpigeon.data.AppSettings
+import dev.jakethesnake.carrierpigeon.data.CellSignalReader
 import dev.jakethesnake.carrierpigeon.data.DataSimRefresher
 import dev.jakethesnake.carrierpigeon.data.DataSimResolver
 import dev.jakethesnake.carrierpigeon.data.DataSimState
@@ -205,7 +207,14 @@ private fun MainScreen(accessRequests: Int) {
     // Redraw the tiles when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
     val displayInfoVersion by DisplayInfoTracker.version.collectAsState()
     val showDetail by settings.showNetworkDetail.collectAsState(initial = false)
-    val tiles = remember(sims, state, displayInfoVersion) { simTiles(sims, state, resolver, context.resources) }
+    val baseTiles = remember(sims, state, displayInfoVersion) { simTiles(sims, state, resolver, context.resources) }
+    // Live signal bars for each tile's SIM. Listens only while the screen is showing, and again
+    // whenever the set of SIMs changes.
+    val signalReader = remember { CellSignalReader(app) }
+    val subIds = remember(baseTiles) { baseTiles.map { it.subId }.toSet() }
+    val signalUpdates = remember(subIds) { signalReader.updates(subIds) }
+    val signals by signalUpdates.collectAsStateWithLifecycle(initialValue = emptyMap())
+    val tiles = remember(baseTiles, signals) { baseTiles.map { it.copy(signal = signals[it.subId]) } }
 
     val actions = remember {
         object : HomeActions {

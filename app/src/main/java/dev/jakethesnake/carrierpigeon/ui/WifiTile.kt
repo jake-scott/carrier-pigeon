@@ -149,7 +149,11 @@ fun WifiTile(
                 }
             }
 
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 wifi.generation?.let {
                     TermText(it.label, onTerm, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                 }
@@ -161,6 +165,8 @@ fun WifiTile(
                         modifier = Modifier.padding(bottom = 2.dp),
                     )
                 }
+                Spacer(Modifier.weight(1f))
+                SignalBars(wifi.signal, Modifier.padding(bottom = 4.dp))
             }
             wifi.security?.let {
                 val security = Labels.security(LocalContext.current.resources, it)
@@ -183,7 +189,7 @@ fun WifiTile(
                 speed?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 val extra = listOfNotNull(
                     wifi.maxMbps?.let { stringResource(R.string.wifi_max_speed, it) },
-                    wifi.rssi?.let { stringResource(R.string.wifi_signal, it) },
+                    wifi.rssi?.let { stringResource(R.string.signal_dbm, it) },
                 )
                 if (extra.isNotEmpty()) {
                     Text(
