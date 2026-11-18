@@ -14,7 +14,15 @@
     <!-- Re-register the network callback after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <uses-feature android:name="android.hardware.telephony" android:required="true" />
+    <!--
+        All optional, so Play offers the app to every device. READ_PHONE_STATE, ACCESS_WIFI_STATE and
+        the location permissions would otherwise imply these as required. Without telephony the app
+        shows no SIM tiles and the widget says "No mobile network"; without Wi-Fi the Wi-Fi tile is
+        hidden (see DeviceFeatures).
+    -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
 
     <application
         android:name=".CarrierPigeonApp"

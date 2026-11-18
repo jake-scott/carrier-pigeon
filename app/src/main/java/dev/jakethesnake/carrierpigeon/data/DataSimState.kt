@@ -67,9 +67,14 @@ data class DataSimState(
     val access: Access,
     /** True when the default route goes over a VPN. */
     val vpn: Boolean,
-    /** False when READ_PHONE_STATE isn't granted, so SIM names may be missing. */
+    /**
+     * False when READ_PHONE_STATE isn't granted, so SIM names may be missing. Always true on a device
+     * without telephony, since there is nothing to ask for.
+     */
     val phoneAccess: Boolean,
     val updatedAtMillis: Long,
+    /** False on a device that can't hold a SIM (e.g. a Wi-Fi-only tablet): there is no data SIM to show. */
+    val hasTelephony: Boolean = true,
 ) {
     val hasActiveSub: Boolean get() = activeSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID
 

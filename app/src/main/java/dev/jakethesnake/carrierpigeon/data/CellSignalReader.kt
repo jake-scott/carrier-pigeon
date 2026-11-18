@@ -31,7 +31,7 @@ class CellSignalReader(context: Context) {
      * and updates as it changes.
      */
     fun updates(subIds: Set<Int>): Flow<Map<Int, Signal?>> = callbackFlow {
-        val tm = app.getSystemService(TelephonyManager::class.java)
+        val tm = if (DeviceFeatures.hasTelephony(app)) app.getSystemService(TelephonyManager::class.java) else null
         val valid = subIds.filter { it != SubscriptionManager.INVALID_SUBSCRIPTION_ID }
         // ConcurrentHashMap can't hold null values, so unknown is stored as an absent key.
         val readings = ConcurrentHashMap<Int, Signal>()
