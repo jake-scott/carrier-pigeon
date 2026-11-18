@@ -111,10 +111,12 @@ object DataSimMonitor {
     @Synchronized
     fun registerInProcessListeners(context: Context) {
         val app = context.applicationContext
-        registerTelephonyCallback(app)
-        registerSubscriptionsListener(app)
         registerDefaultNetworkCallback(app)
         registerRuntimeReceiver(app)
+        // No SIM support (e.g. a Wi-Fi-only tablet): nothing to listen to, and the calls may throw.
+        if (!DeviceFeatures.hasTelephony(app)) return
+        registerTelephonyCallback(app)
+        registerSubscriptionsListener(app)
         syncDisplayInfoListeners(app)
     }
 

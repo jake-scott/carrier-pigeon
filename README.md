@@ -2,7 +2,7 @@
 
 An Android app and home-screen widget that shows which SIM is carrying your mobile data and how your phone is reaching the internet right now, so you can see when it quietly switches between SIMs or drops from Wi-Fi to mobile data.
 
-Application ID `dev.jakethesnake.carrierpigeon`. Android 11 (API 30) or later, on a phone with telephony. English, French and Spanish.
+Application ID `dev.jakethesnake.carrierpigeon`. Android 11 (API 30) or later. Made for phones with a SIM; it also installs on devices without one (tablets, Chromebooks), where it shows only the internet and Wi-Fi status. English, French and Spanish.
 
 Licensed under the [Apache License 2.0](LICENSE).
 

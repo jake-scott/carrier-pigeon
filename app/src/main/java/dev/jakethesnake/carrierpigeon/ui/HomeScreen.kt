@@ -73,6 +73,8 @@ data class HomeState(
     val wifiCarriesInternet: Boolean = false,
     /** Why the Wi-Fi name is hidden, if it is. */
     val ssidHint: SsidHint? = null,
+    /** False on a device that can't hold a SIM: say so instead of showing SIM tiles. */
+    val hasTelephony: Boolean = true,
 )
 
 /** What the home screen can ask for. */
@@ -177,7 +179,7 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
             if (state.sims.isEmpty()) {
                 item {
                     Text(
-                        stringResource(R.string.home_no_sims),
+                        stringResource(if (state.hasTelephony) R.string.home_no_sims else R.string.home_no_telephony),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 24.dp),

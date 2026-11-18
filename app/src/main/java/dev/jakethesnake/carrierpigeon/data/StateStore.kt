@@ -44,6 +44,7 @@ class StateStore(context: Context) {
             p[VPN] = s.vpn
             p[PHONE_ACCESS] = s.phoneAccess
             p[UPDATED] = s.updatedAtMillis
+            p[HAS_TELEPHONY] = s.hasTelephony
         }
     }
 
@@ -66,6 +67,7 @@ class StateStore(context: Context) {
             vpn = this[VPN] ?: false,
             phoneAccess = this[PHONE_ACCESS] ?: true,
             updatedAtMillis = updated,
+            hasTelephony = this[HAS_TELEPHONY] ?: true,
         )
     }
 
@@ -87,5 +89,6 @@ class StateStore(context: Context) {
         val VPN = booleanPreferencesKey("vpn")
         val PHONE_ACCESS = booleanPreferencesKey("phone_access")
         val UPDATED = longPreferencesKey("updated_at")
+        val HAS_TELEPHONY = booleanPreferencesKey("has_telephony")
     }
 }
