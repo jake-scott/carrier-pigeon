@@ -76,8 +76,9 @@ private fun WidgetContent(state: DataSimState?, showDetail: Boolean) {
             .apply { if (needsAccess) putExtra(MainActivity.EXTRA_REQUEST_PHONE_ACCESS, true) }
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
     )
-    // Grey dot when the data SIM can't carry data (airplane mode, data off, no service).
-    val dotColor = if (state == null || state.status != DataStatus.OK) {
+    // Grey dot when the data SIM can't carry data (airplane mode, data off, no service), or there is
+    // no SIM support at all.
+    val dotColor = if (state == null || !state.hasTelephony || state.status != DataStatus.OK) {
         Color(0xFF9E9E9E)
     } else {
         state.iconTint.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF3D5AFE)

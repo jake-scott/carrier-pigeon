@@ -49,12 +49,15 @@ import dev.jakethesnake.carrierpigeon.data.DataSimRefresher
 import dev.jakethesnake.carrierpigeon.data.DataSimResolver
 import dev.jakethesnake.carrierpigeon.data.DataSimState
 import dev.jakethesnake.carrierpigeon.data.DataStatus
+import dev.jakethesnake.carrierpigeon.data.DeviceFeatures
 import dev.jakethesnake.carrierpigeon.data.SimLabel
 import dev.jakethesnake.carrierpigeon.data.DisplayInfoTracker
 import dev.jakethesnake.carrierpigeon.data.StateStore
 import dev.jakethesnake.carrierpigeon.data.SwitchLog
 import dev.jakethesnake.carrierpigeon.data.WifiReader
+import dev.jakethesnake.carrierpigeon.data.WifiStatus
 import dev.jakethesnake.carrierpigeon.widget.CarrierPigeonWidget
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 /** The app screen: a tile per active SIM (see [HomeScreen]), with the switch log in the menu. */
@@ -134,6 +137,9 @@ private fun MainScreen(accessRequests: Int) {
     val state by store.state.collectAsState(initial = null)
 
     val settings = remember { AppSettings(app) }
+    // A Wi-Fi-only tablet or a Chromebook can install the app too: no SIMs to show, nothing to ask for.
+    val hasTelephony = resolver.hasTelephony
+    val hasWifi = remember { DeviceFeatures.hasWifi(app) }
     var hasPermission by remember { mutableStateOf(resolver.hasPhoneStatePermission()) }
     // Access can also be granted or revoked in Settings while we're in the background.
     LaunchedEffect(state) { hasPermission = resolver.hasPhoneStatePermission() }
@@ -165,7 +171,7 @@ private fun MainScreen(accessRequests: Int) {
     var showRationale by rememberSaveable { mutableStateOf(false) }
     // Ask on the first ever open, and whenever the widget sends us here to ask.
     LaunchedEffect(accessRequests) {
-        if (resolver.hasPhoneStatePermission()) return@LaunchedEffect
+        if (!hasTelephony || resolver.hasPhoneStatePermission()) return@LaunchedEffect
         if (accessRequests > 0 || !settings.askedForPhoneAccess()) showRationale = true
     }
 
@@ -193,7 +199,8 @@ private fun MainScreen(accessRequests: Int) {
     }
     var showLocationRationale by rememberSaveable { mutableStateOf(false) }
     // Registered again once location is granted, so the callback can include the network name.
-    val wifiUpdates = remember(hasLocation) { wifiReader.updates() }
+    // No Wi-Fi radio: no tile, so don't listen.
+    val wifiUpdates = remember(hasLocation) { if (hasWifi) wifiReader.updates() else emptyFlow<WifiStatus>() }
     val wifi by wifiUpdates.collectAsState(initial = null)
     val ssidHint = wifi?.takeIf { it.connected && it.ssid == null }?.let {
         when {
@@ -262,8 +269,9 @@ private fun MainScreen(accessRequests: Int) {
         HomeState(
             sims = tiles,
             showDetail = showDetail,
-            needsPhoneAccess = !hasPermission,
-            notice = state?.takeIf { !it.hasActiveSub }?.let { stringResource(R.string.home_no_data_sim) },
+            needsPhoneAccess = hasTelephony && !hasPermission,
+            notice = state?.takeIf { hasTelephony && !it.hasActiveSub }?.let { stringResource(R.string.home_no_data_sim) },
+            hasTelephony = hasTelephony,
             canPickLanguage = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
             internet = state?.let { Labels.internetHeadline(context.resources, it, wifi?.ssid) },
             wifi = wifi,

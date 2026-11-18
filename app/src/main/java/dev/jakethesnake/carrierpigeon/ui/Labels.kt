@@ -70,7 +70,9 @@ object Labels {
      * Top line of the widget: the carrier carrying data, or why there is none ("No cellular" in
      * airplane mode or without service, "Mobile data off").
      */
-    fun widgetHeadline(res: Resources, state: DataSimState): String = when (state.status) {
+    fun widgetHeadline(res: Resources, state: DataSimState): String = if (!state.hasTelephony) {
+        res.getString(R.string.widget_no_telephony)
+    } else when (state.status) {
         DataStatus.AIRPLANE_MODE, DataStatus.NO_SERVICE -> res.getString(R.string.widget_no_cellular)
         DataStatus.DATA_OFF -> res.getString(R.string.status_data_off)
         DataStatus.OK -> simLabel(res, state.simLabel)

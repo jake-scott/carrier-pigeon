@@ -34,6 +34,8 @@
     <string name="home_terms_hint">Tap a term like LTE or 5G to see what it means</string>
     <!-- Shown instead of SIM tiles when the phone has no active SIM. -->
     <string name="home_no_sims">No active SIMs</string>
+    <!-- Shown instead of SIM tiles on a device that can't hold a SIM, e.g. a Wi-Fi-only tablet. -->
+    <string name="home_no_telephony">This device can\'t use a SIM, so there are no SIMs to show</string>
     <!-- Warning above the tiles when no SIM is set for mobile data. -->
     <string name="home_no_data_sim">No SIM is carrying mobile data</string>
     <!-- Switch at the bottom of the screen: also show what is underneath the network badge, link speeds etc. -->
@@ -176,6 +178,8 @@
     <string name="widget_tap_to_allow_short">Tap to allow</string>
     <!-- Widget top line when the data SIM has no cellular connection (airplane mode, no service). -->
     <string name="widget_no_cellular">No cellular</string>
+    <!-- Widget top line on a device that can't hold a SIM, e.g. a Wi-Fi-only tablet. Keep it short. -->
+    <string name="widget_no_telephony">No SIM support</string>
     <!-- Widget marker after the carrier name: data is on the SIM chosen in Settings. Lowercase, very short. -->
     <string name="widget_marker_default">default</string>
     <!-- Widget marker after the carrier name: the phone moved data to the other SIM. Lowercase, very short. -->

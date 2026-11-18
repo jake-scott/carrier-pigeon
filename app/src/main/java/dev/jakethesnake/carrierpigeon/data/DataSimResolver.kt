@@ -24,10 +24,14 @@ class DataSimResolver(private val context: Context) {
     private val subscriptionManager = context.getSystemService(SubscriptionManager::class.java)
     private val telephonyManager = context.getSystemService(TelephonyManager::class.java)
 
+    /** False on a device that can't hold a SIM; every telephony call below is skipped then. */
+    val hasTelephony: Boolean = DeviceFeatures.hasTelephony(context)
+
     fun hasPhoneStatePermission(): Boolean =
         context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
 
     fun resolve(networkSubId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID): DataSimState {
+        if (!hasTelephony) return resolveWithoutTelephony()
         val active = SubscriptionManager.getActiveDataSubscriptionId()
         val defaultSub = SubscriptionManager.getDefaultDataSubscriptionId()
         val info = subscriptionInfo(active)
@@ -50,6 +54,32 @@ class DataSimResolver(private val context: Context) {
             updatedAtMillis = System.currentTimeMillis(),
         )
     }
+
+    /** A device with no SIM support: only how it reaches the internet, and airplane mode. */
+    private fun resolveWithoutTelephony(): DataSimState {
+        val none = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        val (access, vpn) = access()
+        return DataSimState(
+            activeSubId = none,
+            defaultSubId = none,
+            networkSubId = none,
+            displayName = null,
+            carrierName = null,
+            slotIndex = -1,
+            isEmbedded = false,
+            iconTint = 0,
+            networkKind = null,
+            status = if (airplaneMode()) DataStatus.AIRPLANE_MODE else DataStatus.OK,
+            access = access,
+            vpn = vpn,
+            phoneAccess = true,
+            updatedAtMillis = System.currentTimeMillis(),
+            hasTelephony = false,
+        )
+    }
+
+    private fun airplaneMode(): Boolean =
+        Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) == 1
 
     /**
      * How the device is reaching the internet: the transport of the default network, looking through
@@ -96,14 +126,13 @@ class DataSimResolver(private val context: Context) {
      * whether data can actually flow. Checks that need READ_PHONE_STATE are skipped without it.
      */
     private fun status(subId: Int): DataStatus {
-        if (Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) == 1) {
-            return DataStatus.AIRPLANE_MODE
-        }
+        if (airplaneMode()) return DataStatus.AIRPLANE_MODE
         if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID || !hasPhoneStatePermission()) return DataStatus.OK
         val tm = telephonyManager.createForSubscriptionId(subId)
         try {
             if (!tm.isDataEnabled) return DataStatus.DATA_OFF
-        } catch (e: SecurityException) {
+        } catch (e: RuntimeException) {
+            // SecurityException, or UnsupportedOperationException on a device without the feature.
             // Fall through: unknown is treated as on.
         }
         try {
@@ -111,7 +140,7 @@ class DataSimResolver(private val context: Context) {
             if (state == ServiceState.STATE_OUT_OF_SERVICE || state == ServiceState.STATE_POWER_OFF) {
                 return DataStatus.NO_SERVICE
             }
-        } catch (e: SecurityException) {
+        } catch (e: RuntimeException) {
             // Some builds also want location for getServiceState(); skip the check.
         }
         return DataStatus.OK
@@ -131,15 +160,21 @@ class DataSimResolver(private val context: Context) {
     }
 
     /** SIM slot for [subId]; needs no permission. -1 if unknown. */
-    private fun slotIndex(subId: Int): Int =
-        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) -1 else SubscriptionManager.getSlotIndex(subId)
-
-    /** All active SIMs, for the app screen. Empty without READ_PHONE_STATE. */
-    fun activeSubscriptions(): List<SubscriptionInfo> {
-        if (!hasPhoneStatePermission()) return emptyList()
+    private fun slotIndex(subId: Int): Int {
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return -1
         return try {
-            subscriptionManager.activeSubscriptionInfoList.orEmpty()
-        } catch (e: SecurityException) {
+            SubscriptionManager.getSlotIndex(subId)
+        } catch (e: RuntimeException) {
+            -1
+        }
+    }
+
+    /** All active SIMs, for the app screen. Empty without READ_PHONE_STATE or without telephony. */
+    fun activeSubscriptions(): List<SubscriptionInfo> {
+        if (!hasTelephony || !hasPhoneStatePermission()) return emptyList()
+        return try {
+            subscriptionManager?.activeSubscriptionInfoList.orEmpty()
+        } catch (e: RuntimeException) {
             Log.w(TAG, "activeSubscriptionInfoList denied", e)
             emptyList()
         }
@@ -148,8 +183,8 @@ class DataSimResolver(private val context: Context) {
     private fun subscriptionInfo(subId: Int): SubscriptionInfo? {
         if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID || !hasPhoneStatePermission()) return null
         return try {
-            subscriptionManager.getActiveSubscriptionInfo(subId)
-        } catch (e: SecurityException) {
+            subscriptionManager?.getActiveSubscriptionInfo(subId)
+        } catch (e: RuntimeException) {
             Log.w(TAG, "getActiveSubscriptionInfo denied", e)
             null
         }
@@ -160,7 +195,7 @@ class DataSimResolver(private val context: Context) {
      * type with the carrier's display override (see [NetworkKind.of]).
      */
     fun networkKind(subId: Int): NetworkKind? {
-        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return null
+        if (!hasTelephony || subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return null
         val display = DisplayInfoTracker.displayInfo(subId)
         val raw = display?.networkType?.takeIf { it != TelephonyManager.NETWORK_TYPE_UNKNOWN }
             ?: rawNetworkType(subId)
@@ -171,7 +206,7 @@ class DataSimResolver(private val context: Context) {
         if (!hasPhoneStatePermission()) return TelephonyManager.NETWORK_TYPE_UNKNOWN
         return try {
             telephonyManager.createForSubscriptionId(subId).dataNetworkType
-        } catch (e: SecurityException) {
+        } catch (e: RuntimeException) {
             TelephonyManager.NETWORK_TYPE_UNKNOWN
         }
     }

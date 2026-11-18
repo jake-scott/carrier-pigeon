@@ -14,6 +14,7 @@
     <string name="home_active_sims">SIM activas</string>
     <string name="home_terms_hint">Toca un término como LTE o 5G para ver qué significa</string>
     <string name="home_no_sims">No hay SIM activas</string>
+    <string name="home_no_telephony">Este dispositivo no admite tarjetas SIM, así que no hay SIM que mostrar</string>
     <string name="home_no_data_sim">Ninguna SIM está usando los datos móviles</string>
     <string name="home_show_detail">Mostrar detalles de red</string>
 
@@ -95,6 +96,7 @@
     <string name="widget_tap_to_allow">Toca para permitir el acceso al teléfono</string>
     <string name="widget_tap_to_allow_short">Toca para permitir</string>
     <string name="widget_no_cellular">Sin red móvil</string>
+    <string name="widget_no_telephony">No admite SIM</string>
     <string name="widget_marker_default">predet.</string>
     <string name="widget_marker_backup">respaldo</string>
 </resources>
