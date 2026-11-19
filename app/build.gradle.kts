@@ -14,9 +14,10 @@ android {
         // Release APKs (and F-Droid, which rebuilds them from the tag) take
         // these from the source, so a release is reproducible. Only dev APKs
         // and Play bundles override the code, with -PdevVersionCode and
-        // -PplayVersionCode (release.yml). release.yml checks a vX.Y.Z or
-        // vX.Y.Z-rc.N tag against versionName, so Play and F-Droid users see
-        // exactly X.Y.Z. dev and debug builds add the commit to it (see
+        // -PplayVersionCode (release.yml). An rc tag's Play bundle takes
+        // versionName from the tag (-PplayVersionName), and a vX.Y.Z tag must
+        // match versionName here, so Play and F-Droid users see exactly
+        // X.Y.Z. dev and debug builds add the commit to it (see
         // androidComponents below).
         versionCode = 1
         versionName = "0.1.0"
@@ -35,9 +36,12 @@ android {
         }
         create("prod") {
             dimension = "channel"
-            // Play bundles from main only. F-Droid never builds them, so the
-            // release APK keeps the code above.
+            // Play bundles from main and rc tags only. F-Droid never builds
+            // them, so the release APK keeps the code above. An rc tag's
+            // bundle also takes its versionName from the tag (vX.Y.Z-rc.N
+            // gives X.Y.Z).
             providers.gradleProperty("playVersionCode").orNull?.let { versionCode = it.toInt() }
+            providers.gradleProperty("playVersionName").orNull?.let { versionName = it }
         }
     }
 

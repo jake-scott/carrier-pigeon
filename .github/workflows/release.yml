@@ -8,25 +8,29 @@ name: Release
 #   push to dev      dev       dev         dev APK          dev key            Firebase App Distribution
 #                                                                              (group carrier-pigeon-dev)
 #   push to main     internal  qa          prod bundle      play (upload) key  Play internal track
-#   tag vX.Y.Z-rc.N  closed    qa          nothing          nothing            the internal build of that
-#                                                                              commit, promoted to closed
-#   tag vX.Y.Z       prod      prod        prod APK,        release key        the closed build of that commit
-#                                          rebuilt and                         promoted to production, then
-#                                          checked                             the GitHub release (F-Droid
-#                                                                              builds the tag)
+#   tag vX.Y.Z-rc.N  closed    qa          prod bundle,     play (upload) key  Play closed track
+#                                          versionName
+#                                          X.Y.Z from the tag
+#   tag vX.Y.Z       prod      prod        prod APK,        release key        the rc's closed build promoted
+#                                          rebuilt and                         to production, then the GitHub
+#                                          checked                             release (F-Droid builds the tag)
 #
-# One Play bundle per release. main builds and uploads it; the tags only move
-# it forward a track, unchanged, so production users get the bytes closed
-# testers ran. Tag main's latest build with an rc tag, and give the release
-# tag the same commit as the rc testers have.
+# An rc tag builds its own bundle from the tagged commit, with versionName
+# taken from the tag (vX.Y.Z-rc.N gives X.Y.Z), so closed testers see the
+# release's version whatever app/build.gradle.kts says. It is a new build of
+# that commit, not the bytes internal testers ran. The release tag doesn't
+# build for Play: it moves the closed bundle forward a track, unchanged, so
+# production users get the bytes closed testers ran. Give the release tag
+# the same commit as the rc testers have.
 #
 # Which bundle. A tag never trusts a release's name on Play: anything that
 # can write to a testing track can name a release whatever it likes. The
-# `bundle` job finds the main run that built the tagged commit, takes its
-# version code (run number + 100000) and its bundle, and checks the bundle's
-# build provenance: made by this file, on main, from that commit. Play
-# never reuses a version code, and scripts/play_promote.sh only promotes if
-# the track below holds exactly that code with exactly that bundle's SHA-256.
+# `bundle` job finds the run that built the latest rc tag on the release's
+# commit, takes its bundle, and checks the bundle's build provenance: made
+# by this file, on main, and named for that commit and its version code
+# (run number + 100000). Play never reuses a version code, and
+# scripts/play_promote.sh only promotes if the closed track holds exactly
+# that code with exactly that bundle's SHA-256.
 #
 # Who can sign and publish. Each key's signer account, and each Play
 # account, trusts exactly one value of
@@ -48,7 +52,7 @@ name: Release
 # push runs build.yml, and when that finishes, workflow_run starts this
 # file, which GitHub always runs from main. This copy then checks that the
 # tag points at a commit already on main and that the tag matches the app's
-# versionName, before doing anything. The jobs that sign or publish take
+# versionName (for vX.Y.Z), before doing anything. The jobs that sign or publish take
 # their scripts and certificates from main, not from the tag. A tag ruleset
 # keeps v* tags from being moved or deleted, so to run a tag again (after a
 # failure, or the first run for a key), use "Run workflow" on main with the
@@ -64,8 +68,8 @@ name: Release
 # Each prod run rebuilds the APK on a second, fresh runner and checks the two
 # are identical, the check F-Droid makes, so a release F-Droid would reject
 # fails before the approval is asked for. Play bundles take their version code
-# from the run number instead (-PplayVersionCode), so every main push can
-# upload; F-Droid never builds them.
+# from the run number instead (-PplayVersionCode), so every main push and rc
+# tag can upload; F-Droid never builds them.
 #
 # Which Google Cloud project, keys, accounts and apps to use comes from
 # Actions variables (Settings > Secrets and variables > Actions >
@@ -150,6 +154,7 @@ jobs:
       sha: ${{ steps.what.outputs.sha }}
       tag: ${{ steps.what.outputs.tag }}
       version: ${{ steps.what.outputs.version }}
+      rc_tag: ${{ steps.what.outputs.rc_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -216,15 +221,22 @@ jobs:
             echo "::error::$TAG (${tag_sha::7}) isn't on main. Tag a commit after it's merged."
             exit 1
           fi
-          # F-Droid reads the version from the source at the tag, and Play
-          # testers see it, so the tag and versionName must agree.
+          # F-Droid builds the release tag from source, so for vX.Y.Z the
+          # tag and versionName must agree. An rc's bundle takes its
+          # versionName from the tag instead; a mismatch there is only a
+          # reminder to bump the source before the release tag.
           source_version=$(git show "$tag_sha:app/build.gradle.kts" | sed -n 's/.*versionName = "\(.*\)".*/\1/p' | head -1)
           if [ "$source_version" != "$version" ]; then
-            echo "::error::$TAG doesn't match versionName $source_version in app/build.gradle.kts at ${tag_sha::7}."
-            exit 1
+            if [ "$channel" = prod ]; then
+              echo "::error::$TAG doesn't match versionName $source_version in app/build.gradle.kts at ${tag_sha::7}."
+              exit 1
+            fi
+            echo "::warning title=versionName::app/build.gradle.kts at ${tag_sha::7} says $source_version. Closed testers get $version from the tag, but v$version needs versionName $version in the source (F-Droid builds it)."
           fi
           # Production gets what closed testers had: the release tag needs an
-          # rc of the same version on the same commit.
+          # rc of the same version on the same commit. The latest one is the
+          # build on the closed track.
+          rc_tag=
           if [ "$channel" = prod ]; then
             rcs=$(git tag --points-at "$tag_sha" --list "v$version-rc.*" | grep -E "^v$version-rc\.[0-9]+$" || true)
             if [ -z "$rcs" ]; then
@@ -232,6 +244,7 @@ jobs:
               exit 1
             fi
             echo "rc tags on this commit: $(echo $rcs)"
+            rc_tag=$(sort -V <<<"$rcs" | tail -1)
           fi
           {
             echo "channel=$channel"
@@ -239,58 +252,46 @@ jobs:
             echo "sha=$tag_sha"
             echo "tag=$TAG"
             echo "version=$version"
+            echo "rc_tag=$rc_tag"
           } >> "$GITHUB_OUTPUT"
           echo "::notice title=Release::$TAG ($tag_sha) -> $channel"
 
-  # For a tag: the Play bundle main built from the tagged commit, and proof of
-  # where it came from. No credentials here beyond reading this repository.
-  # The jobs that promote take the version code and SHA-256 from this job's
+  # For a release tag: the Play bundle the latest rc tag on that commit built,
+  # and proof of where it came from. No credentials here beyond reading this
+  # repository. `ship` takes the version code and SHA-256 from this job's
   # outputs, and Play must agree with both.
   bundle:
     needs: setup
-    if: needs.setup.outputs.channel == 'closed' || needs.setup.outputs.channel == 'prod'
+    if: needs.setup.outputs.channel == 'prod'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read # the main run and its artifact
       attestations: read
     outputs:
-      code: ${{ steps.run.outputs.code }}
+      code: ${{ steps.check.outputs.code }}
       sha256: ${{ steps.check.outputs.sha256 }}
     steps:
-      - name: Find the main run that built this commit
+      - name: Find the run that built the rc
         id: run
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ needs.setup.outputs.sha }}
+          RC_TAG: ${{ needs.setup.outputs.rc_tag }}
         run: |
           set -euo pipefail
-          # Successful runs of this file for a push to main at exactly this
-          # commit, newest first, that still have their bundle.
-          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?event=push&branch=main&head_sha=$SHA&status=success&per_page=20" \
-            --jq '.workflow_runs | sort_by(.run_number) | reverse | .[] | "\(.id) \(.run_number)"')
-          found=
-          while read -r id number; do
-            [ -n "$id" ] || continue
-            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?name=bundle-internal" \
-                 --jq '.artifacts[] | select(.expired == false) | .id' | grep -q .; then
-              found="$id $number"
-              break
-            fi
-          done <<<"$runs"
-          if [ -z "$found" ]; then
-            echo "::error title=No bundle::No successful push to main built ${SHA::7} with its bundle still kept. Tag a commit main has built and uploaded to internal (within the artifact retention)."
+          # The rc's run names its bundle artifact after the tag. The newest
+          # one still kept, if the rc was run more than once.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=bundle-closed-$RC_TAG&per_page=20" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
+          if [ -z "$id" ]; then
+            echo "::error title=No bundle::No run of $RC_TAG kept its bundle (bundle-closed-$RC_TAG). Release within the artifact retention of the rc, or tag a new rc."
             exit 1
           fi
-          read -r id number <<<"$found"
-          {
-            echo "id=$id"
-            echo "code=$((number + 100000))"
-          } >> "$GITHUB_OUTPUT"
-          echo "Main run $id (#$number): version code $((number + 100000))"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "$RC_TAG was built by run $id"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: bundle-internal
+          name: bundle-closed-${{ needs.setup.outputs.rc_tag }}
           path: bundle
           run-id: ${{ steps.run.outputs.id }}
           github-token: ${{ github.token }}
@@ -299,28 +300,46 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.setup.outputs.sha }}
-          CODE: ${{ steps.run.outputs.code }}
+          VERSION: ${{ needs.setup.outputs.version }}
           TAG: ${{ needs.setup.outputs.tag }}
+          RC_TAG: ${{ needs.setup.outputs.rc_tag }}
           RUN_ID: ${{ steps.run.outputs.id }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          aabs=(bundle/*-"$CODE".aab)
+          aabs=(bundle/*.aab)
           if [ ${#aabs[@]} -ne 1 ]; then
-            echo "::error::Expected one bundle with version code $CODE in run $RUN_ID, found ${#aabs[@]}."
+            echo "::error::Expected one bundle in run $RUN_ID, found ${#aabs[@]}."
             exit 1
           fi
           aab=${aabs[0]}
-          # Signed by this file, as committed on main, from exactly the tagged
-          # commit, on a GitHub-hosted runner.
+          name=$(basename "$aab")
+          # sign-bundle names it carrier-pigeon-<version>-<code>-<commit>.aab.
+          if [[ ! $name =~ ^carrier-pigeon-${VERSION//./\\.}-([0-9]+)-$SHA\.aab$ ]]; then
+            echo "::error::$name isn't the $VERSION bundle of ${SHA::7}."
+            exit 1
+          fi
+          code=${BASH_REMATCH[1]}
+          # Signed by this file, as committed on main, on a GitHub-hosted
+          # runner. A tag's run is a workflow_run on main, so the source
+          # commit it records is main's head then, not the tag's; the
+          # subject's name, which only this file wrote, says which commit and
+          # version code it is.
           gh attestation verify "$aab" \
             --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
             --source-ref refs/heads/main \
-            --source-digest "$SHA" \
-            --deny-self-hosted-runners
+            --deny-self-hosted-runners \
+            --format json > attestation.json
+          if ! jq -e --arg n "$name" '[.[].verificationResult.statement.subject[].name] | index($n)' attestation.json >/dev/null; then
+            echo "::error::The attestation for $name is for another file name: $(jq -c '[.[].verificationResult.statement.subject[].name]' attestation.json)"
+            exit 1
+          fi
           sha256=$(sha256sum "$aab" | cut -d' ' -f1)
-          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          {
+            echo "code=$code"
+            echo "sha256=$sha256"
+          } >> "$GITHUB_OUTPUT"
           # What the approval is for, where the reviewer can read it first.
           {
             echo "### What this run will promote"
@@ -329,14 +348,13 @@ jobs:
             echo "| --- | --- |"
             echo "| Tag | \`$TAG\` |"
             echo "| Commit | \`$SHA\` |"
-            echo "| Built by | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID |"
-            echo "| Version code | $CODE |"
+            echo "| Built by | $RC_TAG, $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID |"
+            echo "| Version code | $code |"
             echo "| Bundle SHA-256 | \`$sha256\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: setup
-    if: needs.setup.outputs.channel != 'closed'
     runs-on: ubuntu-24.04
     env:
       CHANNEL: ${{ needs.setup.outputs.channel }}
@@ -364,13 +382,18 @@ jobs:
 
       # dev builds have their own package, and Play bundles their own
       # version-code range, so their codes only need to grow among
-      # themselves: this workflow's run number, offset. prod takes its code
-      # from the source.
+      # themselves: this workflow's run number, offset. Main pushes and rc
+      # tags share the counter, so an rc's code is above every internal
+      # build before it. prod takes its code from the source.
       - name: Build
+        env:
+          TAG_VERSION: ${{ needs.setup.outputs.version }}
         run: |
           case "$CHANNEL" in
             dev)      ./gradlew --no-daemon --no-build-cache assembleDevRelease -PdevVersionCode=$((GITHUB_RUN_NUMBER + 1000)) ;;
             internal) ./gradlew --no-daemon --no-build-cache bundleProdRelease -PplayVersionCode=$((GITHUB_RUN_NUMBER + 100000)) ;;
+            closed)   ./gradlew --no-daemon --no-build-cache bundleProdRelease -PplayVersionCode=$((GITHUB_RUN_NUMBER + 100000)) \
+                        "-PplayVersionName=$TAG_VERSION" ;;
             prod)     ./gradlew --no-daemon --no-build-cache assembleProdRelease ;;
           esac
 
@@ -379,7 +402,7 @@ jobs:
           mkdir -p out
           case "$CHANNEL" in
             dev)      cp app/build/outputs/apk/dev/release/app-dev-release-unsigned.apk out/ ;;
-            internal) cp app/build/outputs/bundle/prodRelease/app-prod-release.aab out/ ;;
+            internal|closed) cp app/build/outputs/bundle/prodRelease/app-prod-release.aab out/ ;;
             prod)     cp app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk out/ ;;
           esac
           sha256sum out/*
@@ -392,6 +415,10 @@ jobs:
         run: |
           if [ "$CHANNEL" = internal ]; then
             version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
+            echo "code=$((GITHUB_RUN_NUMBER + 100000))" >> "$GITHUB_OUTPUT"
+          elif [ "$CHANNEL" = closed ]; then
+            # Gradle was given it (-PplayVersionName).
+            version=$TAG_VERSION
             echo "code=$((GITHUB_RUN_NUMBER + 100000))" >> "$GITHUB_OUTPUT"
           else
             aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
@@ -680,12 +707,13 @@ jobs:
             echo "Testers: $(jq -r '.testingUri // "n/a"' <<<"$details")"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # The bundle for Play, signed with the upload key. Play App Signing re-signs
-  # it with the key Google holds, so Play builds don't carry the release key.
-  # Its build provenance is what the rc and release tags check later.
+  # The bundle for Play (main's for internal, an rc's for closed), signed
+  # with the upload key. Play App Signing re-signs it with the key Google
+  # holds, so Play builds don't carry the release key. An rc bundle's build
+  # provenance is what the release tag checks later.
   sign-bundle:
     needs: [setup, build]
-    if: needs.setup.outputs.channel == 'internal'
+    if: needs.setup.outputs.channel == 'internal' || needs.setup.outputs.channel == 'closed'
     runs-on: ubuntu-24.04
     environment: qa
     permissions:
@@ -697,7 +725,10 @@ jobs:
       # RSA_SIGN_PKCS1_4096_SHA256.
       KMS_DIGEST: sha256
       CERT: signing-certs/play.pem
-      AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}.aab
+      # The release tag's `bundle` job reads the commit and version code from
+      # this name, in the attestation.
+      AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}-${{ needs.setup.outputs.sha }}.aab
+      ARTIFACT: ${{ needs.setup.outputs.channel == 'closed' && format('bundle-closed-{0}', needs.setup.outputs.tag) || 'bundle-internal' }}
     outputs:
       signed: ${{ steps.configured.outputs.ok }}
       first: ${{ steps.first.outputs.first }}
@@ -738,7 +769,7 @@ jobs:
         run: |
           if [ ! -f "$CERT" ]; then
             echo "first=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=New certificate::$CERT doesn't exist yet. This run makes it; commit it from the bundle-internal artifact. Upload that first bundle to Play Console by hand when you create the app there."
+            echo "::notice title=New certificate::$CERT doesn't exist yet. This run makes it; commit it from the $ARTIFACT artifact. Upload that first bundle to Play Console by hand when you create the app there."
           fi
       # Only for a new certificate. Installed before the job has any
       # credentials, as nothing from a package index runs after auth.
@@ -770,45 +801,49 @@ jobs:
           scripts/kms_sign.sh aab "$AAB" "$CERT"
           sha256sum "$AAB"
           [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
-      # Records, signed by GitHub, that this file on main built this bundle
-      # from this commit. The tags check it before promoting the bundle.
+      # Records, signed by GitHub, that this file on main built this bundle,
+      # under its name. The release tag checks it before promoting an rc's.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         if: steps.configured.outputs.ok == 'true'
         with:
           subject-path: ${{ env.AAB }}
-      # Kept for 90 days: an rc or release tag needs it to know which bundle
-      # this commit is, so tag within that.
+      # Kept for 90 days: the release tag needs an rc's to know which bundle
+      # is on the closed track, so release within that.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.configured.outputs.ok == 'true'
         with:
-          name: bundle-internal
+          name: ${{ env.ARTIFACT }}
           path: signed/
           if-no-files-found: error
           compression-level: 0
           retention-days: 90
 
-  # Each main build becomes the release on Play's internal track, as the Play
-  # tester account (testing tracks only). Its name shows the commit, for
-  # people; the tags go by version code.
-  upload-internal:
+  # Each main build becomes the release on Play's internal track, and each rc
+  # tag's build the release on the closed track, as the Play tester account
+  # (testing tracks only). Its name shows the tag or commit, for people; the
+  # release tag goes by version code.
+  upload-play:
     needs: [setup, build, sign-bundle]
     if: >-
-      needs.setup.outputs.channel == 'internal' && needs.sign-bundle.outputs.signed == 'true' &&
-      !needs.sign-bundle.outputs.first
+      (needs.setup.outputs.channel == 'internal' || needs.setup.outputs.channel == 'closed') &&
+      needs.sign-bundle.outputs.signed == 'true' && !needs.sign-bundle.outputs.first
     runs-on: ubuntu-24.04
     environment: qa
-    # One testing-track change at a time. A newer one waiting replaces an
-    # older one waiting, which for internal is what we want anyway.
+    # One change per track at a time. A newer one waiting replaces an older
+    # one waiting, which for internal is what we want anyway; per track, so
+    # a main push never replaces a waiting rc.
     concurrency:
-      group: google-play-testing
+      group: google-play-${{ needs.setup.outputs.channel }}
       cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     env:
-      AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}.aab
+      AAB: signed/carrier-pigeon-${{ needs.build.outputs.version }}-${{ needs.build.outputs.code }}-${{ needs.setup.outputs.sha }}.aab
+      ARTIFACT: ${{ needs.setup.outputs.channel == 'closed' && format('bundle-closed-{0}', needs.setup.outputs.tag) || 'bundle-internal' }}
+      CHANNEL: ${{ needs.setup.outputs.channel }}
       # Play allows 50 characters, so the commit is abbreviated in the step.
-      RELEASE_NAME_PREFIX: ${{ needs.build.outputs.version }} (${{ needs.build.outputs.code }})
+      RELEASE_NAME_PREFIX: ${{ needs.setup.outputs.tag || needs.build.outputs.version }} (${{ needs.build.outputs.code }})
       RELEASE_SHA: ${{ needs.setup.outputs.sha }}
     steps:
       # PLAY_PUBLISHER in qa is the Play tester account.
@@ -835,7 +870,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: steps.configured.outputs.ok == 'true'
         with:
-          name: bundle-internal
+          name: ${{ env.ARTIFACT }}
           path: signed
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: steps.configured.outputs.ok == 'true'
@@ -847,13 +882,14 @@ jobs:
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
       # The Play Developer API with curl and jq: no third-party action runs
       # where the token is.
-      - name: Upload to the internal track
+      - name: Upload to the testing track
         if: steps.configured.outputs.ok == 'true'
         env:
           TOKEN: ${{ steps.auth.outputs.access_token }}
         run: |
           set -euo pipefail
           RELEASE_NAME="$RELEASE_NAME_PREFIX ${RELEASE_SHA::12}"
+          if [ "$CHANNEL" = closed ]; then TRACK=$CLOSED_TRACK; else TRACK=$INTERNAL_TRACK; fi
           api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PLAY_PACKAGE"
           upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PLAY_PACKAGE"
           auth=(--header "Authorization: Bearer $TOKEN")
@@ -876,66 +912,10 @@ jobs:
           call --request PUT --header "Content-Type: application/json" \
             --data "$(jq -n --arg n "$RELEASE_NAME" --arg c "$code" \
               '{releases: [{name: $n, versionCodes: [$c], status: "completed"}]}')" \
-            "$api/edits/$edit/tracks/$INTERNAL_TRACK" >/dev/null
+            "$api/edits/$edit/tracks/$TRACK" >/dev/null
           call --request POST "$api/edits/$edit:commit" >/dev/null
           echo "### Google Play" >> "$GITHUB_STEP_SUMMARY"
-          echo "$RELEASE_NAME on \`$INTERNAL_TRACK\`" >> "$GITHUB_STEP_SUMMARY"
-
-  # rc tag: the build internal testers have now, if it's the one main built
-  # from the tagged commit, moves to the closed track unchanged. As the Play
-  # tester account, which can't touch production.
-  promote-closed:
-    needs: [setup, bundle]
-    if: needs.setup.outputs.channel == 'closed'
-    runs-on: ubuntu-24.04
-    environment: qa
-    concurrency:
-      group: google-play-testing
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Google Play is configured
-        id: configured
-        env:
-          WHAT: Google Play
-          ENVIRONMENT: qa
-          NEEDED: GCP_WIF_PROVIDER PLAY_PACKAGE PLAY_PUBLISHER
-          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
-          PLAY_PACKAGE: ${{ vars.PLAY_PACKAGE }}
-          PLAY_PUBLISHER: ${{ vars.PLAY_PUBLISHER }}
-        run: |
-          missing=()
-          for v in $NEEDED; do
-            if [ -n "${!v}" ]; then echo "$v=${!v}" >> "$GITHUB_ENV"; else missing+=("$v"); fi
-          done
-          if [ ${#missing[@]} -eq 0 ]; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning title=$WHAT skipped::Set ${missing[*]} in the variables of the $ENVIRONMENT environment (or the repository's). See README.md, Release configuration."
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.configured.outputs.ok == 'true'
-        with:
-          persist-credentials: false
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        if: steps.configured.outputs.ok == 'true'
-        id: auth
-        with:
-          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
-          service_account: ${{ env.PLAY_PUBLISHER }}
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
-      - name: Promote internal to closed
-        if: steps.configured.outputs.ok == 'true'
-        env:
-          TOKEN: ${{ steps.auth.outputs.access_token }}
-          TAG: ${{ needs.setup.outputs.tag }}
-          CODE: ${{ needs.bundle.outputs.code }}
-          BUNDLE_SHA256: ${{ needs.bundle.outputs.sha256 }}
-        run: scripts/play_promote.sh "$INTERNAL_TRACK" "$CLOSED_TRACK" "$TAG" "$CODE" "$BUNDLE_SHA256"
+          echo "$RELEASE_NAME on \`$TRACK\`" >> "$GITHUB_STEP_SUMMARY"
 
   # What F-Droid will check, before anyone is asked to approve: the
   # independent rebuild is byte-for-byte the build we will sign.

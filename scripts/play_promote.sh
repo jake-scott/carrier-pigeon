@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Moves one exact Play bundle from one track to the next, in one Play edit:
-# internal -> closed for an rc tag, closed -> production for a release tag.
-# release.yml calls it; nothing is uploaded or built here.
+# closed -> production for a release tag. release.yml calls it; nothing is
+# uploaded or built here.
 #
 #   play_promote.sh <from track> <to track> <release name> <version code> <bundle sha256>
 #
-# The version code and SHA-256 come from the main run that built the tagged
-# commit (release.yml, job `bundle`, which checks the bundle's build
-# provenance). This script only promotes when Play agrees:
+# The version code and SHA-256 come from the run that built the rc tag on
+# the released commit (release.yml, job `bundle`, which checks the bundle's
+# build provenance). This script only promotes when Play agrees:
 #   - the current completed release on <from track> is exactly that version
 #     code, and
 #   - the bundle Play holds under that code has that SHA-256.
@@ -66,7 +66,7 @@ current_name=$(jq -r '.name // "(unnamed)"' <<<"$current")
 current_codes=$(jq -c '.versionCodes' <<<"$current")
 if [ "$current_codes" != "[\"$code\"]" ]; then
   abandon
-  echo "::error title=$from has a different build::$from has $current_name (version codes $current_codes), not version code $code, the one main built from this commit. Promote the build testers have now: tag the commit it came from, or get this commit onto $from first."
+  echo "::error title=$from has a different build::$from has $current_name (version codes $current_codes), not version code $code, the one built for this commit's rc tag. Promote the build testers have now: tag the commit it came from, or tag a new rc of this commit first."
   exit 1
 fi
 
@@ -74,7 +74,7 @@ play_sha=$(call "$api/edits/$edit/bundles" |
   jq -r --arg c "$code" '[.bundles[]? | select((.versionCode | tostring) == $c)][0].sha256 // empty')
 if [ "$play_sha" != "$want_sha" ]; then
   abandon
-  echo "::error title=Bundle mismatch::Play's bundle for version code $code has SHA-256 ${play_sha:-none}, but main built $want_sha. Not promoting."
+  echo "::error title=Bundle mismatch::Play's bundle for version code $code has SHA-256 ${play_sha:-none}, but the rc run built $want_sha. Not promoting."
   exit 1
 fi
 
