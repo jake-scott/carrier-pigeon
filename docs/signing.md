@@ -13,20 +13,22 @@ uses them, `.github/workflows/release.yml`.
 | any branch, PR | sideload | `….carrierpigeon.debug`, "Carrier Pigeon Debug" | Android debug key | `carrier-pigeon-debug` artifact (`build.yml`) |
 | `dev` | dev | `….carrierpigeon.dev`, "Carrier Pigeon Dev" | `dev` | Firebase App Distribution, group `carrier-pigeon-dev` |
 | `main` | internal | `dev.jakethesnake.carrierpigeon` | `play` (upload key, bundle) | Play internal track |
-| tag `vX.Y.Z-rc.N` | closed | same | nothing new | the internal Play build of the tagged commit is promoted to the closed track (`alpha`) |
-| tag `vX.Y.Z` | prod | same | `release` (APK) | after approval: the closed Play build of the tagged commit is promoted to production, then the GitHub release, and F-Droid builds the tag |
+| tag `vX.Y.Z-rc.N` | closed | same | `play` (upload key, bundle) | a new bundle of the tagged commit, versionName `X.Y.Z` from the tag, uploaded to the closed track (`alpha`) |
+| tag `vX.Y.Z` | prod | same | `release` (APK) | after approval: the rc's closed Play build is promoted to production, then the GitHub release, and F-Droid builds the tag |
 
 The debug and dev builds each have their own package, so all three install
 side by side and none can update another. Play bundles are signed with the
 `play` upload key; Play App Signing re-signs them with a key Google holds, so
 Play and F-Droid/GitHub builds carry different signatures and switching
-between them means a reinstall. Tags don't build Play bundles: there is one
-bundle per release, built and uploaded by main, and the tags move it forward
-a track, unchanged, so production users get the bytes closed testers ran.
+between them means a reinstall. An rc tag builds its own bundle of the
+tagged commit, with versionName taken from the tag, so closed testers see the
+release's version; it's a new build, not the bytes internal testers ran. The
+release tag doesn't build for Play: it moves the rc's bundle from closed to
+production, unchanged, so production users get the bytes closed testers ran.
 
 Each key's signer account trusts only `release.yml` on one branch, running
 in the matching GitHub environment: the `dev` key the `dev` environment on
-`refs/heads/dev`, the `play` key `qa` (main pushes) and the `release` key
+`refs/heads/dev`, the `play` key `qa` (main pushes and rc tags) and the `release` key
 `prod` (release tags), both on `refs/heads/main`. Signing from any other
 branch, file or environment is refused by Google, whatever the workflow
 says. Uploads have their own accounts: `app-distribute` (App Distribution
@@ -45,52 +47,53 @@ permission would reach it too.
 A workflow triggered by a tag runs the tag's own copy, which the keys don't
 trust and which could have been edited before tagging. So a tag push runs
 `build.yml`, and when that succeeds `workflow_run` starts `release.yml` from
-`main`. That copy checks the tag points at a commit already on `main` and
-matches `versionName`, and signs and publishes with scripts and
+`main`. That copy checks the tag points at a commit already on `main` (and,
+for `vX.Y.Z`, matches `versionName`), and signs and publishes with scripts and
 certificates from `main`. A ruleset keeps `v*` tags from being moved or
 deleted; to run a tag again, use "Run workflow" on `main` with the tag's
 name.
 
-### Which bundle a tag promotes
+### Which bundle the release tag promotes
 
 Play release names are never trusted: anything that can write to a testing
 track can name a release whatever it likes. Instead:
 
-1. Each main run attests its signed bundle (GitHub build provenance: made by
-   `release.yml` on `main`, from that commit) and keeps it as the
-   `bundle-internal` artifact for 90 days.
-2. For a tag, `bundle` (no credentials) finds the successful main run for
-   the tagged commit, takes its version code (run number + 100000) and
-   bundle, verifies the attestation, and writes tag, commit, version code
-   and bundle SHA-256 to the run summary.
-3. `scripts/play_promote.sh` promotes only if the track below holds exactly
+1. Each rc run attests its signed bundle (GitHub build provenance: made by
+   `release.yml` on `main`), named
+   `carrier-pigeon-<version>-<version code>-<commit>.aab`, and keeps it as
+   the `bundle-closed-<rc tag>` artifact for 90 days. A tag's run is a
+   `workflow_run` on `main`, so the commit the attestation records is main's
+   head at the time; the attested file name is what ties it to the tagged
+   commit.
+2. For a release tag, `bundle` (no credentials) takes the latest rc tag on
+   the same commit, finds its artifact, verifies the attestation and that
+   the attested name is this version and commit, and writes tag, rc,
+   version code and bundle SHA-256 to the run summary.
+3. `scripts/play_promote.sh` promotes only if the closed track holds exactly
    that version code as its completed release, and Play's bundle for that
    code has that SHA-256. Play never reuses a version code. The check and
    the promotion are one Play edit, so a track that changes meanwhile makes
    it fail.
 
-So tag main's latest build with an rc tag (internal only holds the latest),
-and give the release tag the same commit as the rc closed testers have.
-Builds from before attestations were added can't be promoted; push to main
-again.
+So give the release tag the same commit as the latest rc closed testers
+have, within 90 days of that rc.
 
 ## How a release is signed
 
 1. `setup` decides the channel from the push or tag. `build` (no
    credentials) builds the unsigned dev APK, Play bundle or prod APK; only
-   dev uses a Gradle cache. rc tags build nothing.
+   dev uses a Gradle cache. An rc tag's bundle gets versionName from the
+   tag (`-PplayVersionName`).
 2. dev: `sign-apk` signs in `dev` through the PKCS#11 library with the
    certificate in `signing-certs/`, and checks the result carries that
    certificate (`scripts/kms_sign.sh`). `distribute` uploads the APK to App
    Distribution and sends it to the tester group, with the commit subject as
    release notes.
-3. internal: `sign-bundle` signs the bundle with the upload key in `qa` and
-   attests it; `upload-internal` uploads it to Play's internal track as the
-   Play tester. Its release name shows the commit, for people.
-4. closed (rc tag): `bundle` finds and checks the bundle (above), and
-   `promote-closed`, as the Play tester in `qa`, moves it from internal to
-   `alpha`, named for the tag.
-5. prod (release tag): `bundle` as above; `rebuild` builds the APK again on
+3. internal (main push) and closed (rc tag): `sign-bundle` signs the bundle
+   with the upload key in `qa` and attests it; `upload-play` uploads it, as
+   the Play tester, to the internal track for main and to `alpha` for an rc.
+   Its release name shows the commit (and the tag), for people.
+4. prod (release tag): `bundle` as above; `rebuild` builds the APK again on
    a fresh runner and `verify-build` checks it is byte-for-byte the first
    build. Then `ship`, the one job behind the `prod` approval, signs the APK
    with the release key and, as the Play publisher, promotes the closed
@@ -103,8 +106,16 @@ again.
    "Run workflow".
 
 dev APKs take their version code from the run number (`-PdevVersionCode`),
-Play bundles from the run number plus 100000 (`-PplayVersionCode`), and
-release APKs from the source, so F-Droid can reproduce them.
+Play bundles from the run number plus 100000 (`-PplayVersionCode`; main
+pushes and rc tags share the counter, so an rc's code is above every
+internal build before it), and release APKs from the source, so F-Droid can
+reproduce them.
+
+Version names: release APKs and main's bundles use `versionName` from
+`app/build.gradle.kts`; an rc's bundle uses the tag's `X.Y.Z`. dev and debug
+builds add the commit count and short SHA, for example
+`0.1.0-dev.15+11a78e2` (dev), `0.1.0-dev-debug.15+11a78e2` and
+`0.1.0-debug.15+11a78e2` (the sideload debug build).
 
 APKs are signed with APK Signature Scheme v3 (v2 and v1 are left out, as minSdk 30 always checks v3), by a
 small `apksig` program (`scripts/KmsApkSigner.java`), because `apksigner`
@@ -180,11 +191,13 @@ openssl x509 -in signing-certs/release.pem -noout -fingerprint -sha256 | cut -d=
 ## Making a release
 
 1. Merge to `dev`; testers get the dev build through App Distribution.
-2. Bump `versionCode` and `versionName` in `app/build.gradle.kts` and merge
-   `dev` to `main`. The bundle goes to Play's internal track.
+2. Bump `versionCode` and `versionName` in `app/build.gradle.kts` (F-Droid
+   builds the release tag from them, and the release tag must match) and
+   merge `dev` to `main`. The bundle goes to Play's internal track.
 3. When internal looks good, tag main's latest build as a release
    candidate: `git tag -a v1.2.0-rc.1 -m v1.2.0-rc.1 origin/main && git push
-   origin v1.2.0-rc.1`. That build goes to closed testers on `alpha`. Fixes
+   origin v1.2.0-rc.1`. That commit is built again as 1.2.0 and goes to
+   closed testers on `alpha`. Fixes
    go through `dev` and `main` again, then `-rc.2` and so on.
 4. When closed testing is done, tag the same commit as the rc:
    `git tag -a v1.2.0 -m v1.2.0 v1.2.0-rc.2 && git push origin v1.2.0`.

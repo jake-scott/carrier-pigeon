@@ -41,7 +41,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 
 ## Installing
 
-- **Google Play.** Internal testers get each build from `main`. Closed testers get the builds tagged `vX.Y.Z-rc.N`, and production gets the same build when it's tagged `vX.Y.Z`.
+- **Google Play.** Internal testers get each build from `main`. Each `vX.Y.Z-rc.N` tag builds the tagged commit as version X.Y.Z for closed testers, and production gets that same build when the commit is tagged `vX.Y.Z`.
 - **Dev builds (Firebase App Distribution).** Each push to `dev` goes to the App Distribution tester group as "Carrier Pigeon Dev" (`dev.jakethesnake.carrierpigeon.dev`). It installs beside the Play build, so you can run both.
 - **GitHub releases.** Each `vX.Y.Z` tag publishes a signed APK on the releases page, and F-Droid builds it from the same tag.
 - **Debug APK.** Every GitHub Actions run of `build.yml` attaches a debug build (artifact `carrier-pigeon-debug`, "Carrier Pigeon Debug"), signed with the throwaway debug key.
