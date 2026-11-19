@@ -25,8 +25,11 @@ android {
 
     // dev is the Firebase testers' channel: its own package name and launcher
     // label, signed with the dev key, so it installs beside the real app and
-    // can never be updated over it. prod is what Play (internal track, then
-    // production), F-Droid and GitHub releases get. See docs/signing.md.
+    // can never be updated over it. internal is Play internal testing (main
+    // pushes): its own package too, so it's a separate app in Play Console
+    // and installs beside the closed-testing or production app. prod is what
+    // Play (closed track, then production), F-Droid and GitHub releases get.
+    // See docs/signing.md.
     flavorDimensions += "channel"
     productFlavors {
         create("dev") {
@@ -34,12 +37,16 @@ android {
             applicationIdSuffix = ".dev"
             providers.gradleProperty("devVersionCode").orNull?.let { versionCode = it.toInt() }
         }
+        create("internal") {
+            dimension = "channel"
+            applicationIdSuffix = ".internal"
+            providers.gradleProperty("playVersionCode").orNull?.let { versionCode = it.toInt() }
+        }
         create("prod") {
             dimension = "channel"
-            // Play bundles from main and rc tags only. F-Droid never builds
-            // them, so the release APK keeps the code above. An rc tag's
-            // bundle also takes its versionName from the tag (vX.Y.Z-rc.N
-            // gives X.Y.Z).
+            // Play bundles from rc tags only. F-Droid never builds them, so
+            // the release APK keeps the code above. An rc tag's bundle also
+            // takes its versionName from the tag (vX.Y.Z-rc.N gives X.Y.Z).
             providers.gradleProperty("playVersionCode").orNull?.let { versionCode = it.toInt() }
             providers.gradleProperty("playVersionName").orNull?.let { versionName = it }
         }

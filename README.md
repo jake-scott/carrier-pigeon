@@ -41,7 +41,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 
 ## Installing
 
-- **Google Play.** Internal testers get each build from `main`. Each `vX.Y.Z-rc.N` tag builds the tagged commit as version X.Y.Z for closed testers, and production gets that same build when the commit is tagged `vX.Y.Z`.
+- **Google Play.** Internal testers get each build from `main` as "Carrier Pigeon Internal" (`dev.jakethesnake.carrierpigeon.internal`), a separate Play app that installs beside the closed-testing or production one. Each `vX.Y.Z-rc.N` tag builds the tagged commit as version X.Y.Z for closed testers, and production gets that same build when the commit is tagged `vX.Y.Z`.
 - **Dev builds (Firebase App Distribution).** Each push to `dev` goes to the App Distribution tester group as "Carrier Pigeon Dev" (`dev.jakethesnake.carrierpigeon.dev`). It installs beside the Play build, so you can run both.
 - **GitHub releases.** Each `vX.Y.Z` tag publishes a signed APK on the releases page, and F-Droid builds it from the same tag.
 - **Debug APK.** Every GitHub Actions run of `build.yml` attaches a debug build (artifact `carrier-pigeon-debug`, "Carrier Pigeon Debug"), signed with the throwaway debug key.
@@ -73,12 +73,12 @@ Each job that needs variables checks them first. When any are missing it warns a
 | Variable | Where | Value |
 | --- | --- | --- |
 | `GCP_WIF_PROVIDER` | repository | The Workload Identity provider: `projects/<number>/locations/global/workloadIdentityPools/github/providers/github` |
-| `PLAY_PACKAGE` | repository | The app's package name on Google Play |
+| `PLAY_PACKAGE` | repository | The app's package name on Google Play. Main's builds go to `<PLAY_PACKAGE>.internal`, the internal-testing app |
 | `KMS_KEY` | `dev`, `qa`, `prod` | The Cloud KMS key that environment signs with, `projects/<project>/locations/<region>/keyRings/<ring>/cryptoKeys/<key>`: the dev key in `dev`, the Play upload key in `qa`, the release key in `prod` |
 | `SIGNER` | `dev`, `qa`, `prod` | The service account allowed to sign with that key |
 | `FIREBASE_DISTRIBUTOR` | `dev` | The account that uploads to Firebase App Distribution (bootstrap/ output `distribute_service_account`) |
 | `FIREBASE_APP_ID` | `dev` | The Firebase Android app, `1:<project number>:android:<hex>` (build/ output `firebase_android_app_ids`) |
 | `FIREBASE_TESTER_GROUP` | `dev` | The App Distribution tester group alias |
-| `PLAY_PUBLISHER` | `qa`, `prod` | The Play account for that environment: in `qa` the tester (build/ output `play_testers`; "Release apps to testing tracks" on this app only), in `prod` the publisher (`play_publishers`; production release rights on this app only) |
+| `PLAY_PUBLISHER` | `qa`, `prod` | The Play account for that environment: in `qa` the tester (build/ output `play_testers`; "Release apps to testing tracks" on this app and its `.internal` app only), in `prod` the publisher (`play_publishers`; production release rights on this app only) |
 
 From the command line: `gh variable set KMS_KEY --env dev --body 'projects/…'`, or without `--env` for a repository variable. See [docs/signing.md](docs/signing.md) for how the keys and accounts are set up.

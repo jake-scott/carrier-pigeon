@@ -12,12 +12,15 @@ uses them, `.github/workflows/release.yml`.
 | --- | --- | --- | --- | --- |
 | any branch, PR | sideload | `….carrierpigeon.debug`, "Carrier Pigeon Debug" | Android debug key | `carrier-pigeon-debug` artifact (`build.yml`) |
 | `dev` | dev | `….carrierpigeon.dev`, "Carrier Pigeon Dev" | `dev` | Firebase App Distribution, group `carrier-pigeon-dev` |
-| `main` | internal | `dev.jakethesnake.carrierpigeon` | `play` (upload key, bundle) | Play internal track |
-| tag `vX.Y.Z-rc.N` | closed | same | `play` (upload key, bundle) | a new bundle of the tagged commit, versionName `X.Y.Z` from the tag, uploaded to the closed track (`alpha`) |
+| `main` | internal | `….carrierpigeon.internal`, "Carrier Pigeon Internal" | `play` (upload key, bundle) | internal track of a separate Play app |
+| tag `vX.Y.Z-rc.N` | closed | `dev.jakethesnake.carrierpigeon` | `play` (upload key, bundle) | a new bundle of the tagged commit, versionName `X.Y.Z` from the tag, uploaded to the closed track (`alpha`) |
 | tag `vX.Y.Z` | prod | same | `release` (APK) | after approval: the rc's closed Play build is promoted to production, then the GitHub release, and F-Droid builds the tag |
 
-The debug and dev builds each have their own package, so all three install
-side by side and none can update another. Play bundles are signed with the
+The debug, dev and internal builds each have their own package and launcher
+icon, so all four install side by side and none can update another. That
+makes internal testing a separate app in Play Console (Android can't
+install two tracks of one package together); its builds stay on its
+internal track. Play bundles are signed with the
 `play` upload key; Play App Signing re-signs them with a key Google holds, so
 Play and F-Droid/GitHub builds carry different signatures and switching
 between them means a reinstall. An rc tag builds its own bundle of the
@@ -33,7 +36,7 @@ in the matching GitHub environment: the `dev` key the `dev` environment on
 branch, file or environment is refused by Google, whatever the workflow
 says. Uploads have their own accounts: `app-distribute` (App Distribution
 only, in the `mobile-build-dist` project), the Play tester (testing tracks
-of this app only, trusted by `qa`) and the Play publisher (production of
+of the app and its `.internal` app only, trusted by `qa`) and the Play publisher (production of
 this app, trusted by `prod` only). `prod` has a required reviewer, so
 nothing reaches production users, and nothing is signed with the key
 F-Droid users trust, without that approval.
@@ -91,7 +94,8 @@ have, within 90 days of that rc.
    release notes.
 3. internal (main push) and closed (rc tag): `sign-bundle` signs the bundle
    with the upload key in `qa` and attests it; `upload-play` uploads it, as
-   the Play tester, to the internal track for main and to `alpha` for an rc.
+   the Play tester, to the internal track of `<PLAY_PACKAGE>.internal` for
+   main and to `alpha` of `PLAY_PACKAGE` for an rc.
    Its release name shows the commit (and the tag), for people.
 4. prod (release tag): `bundle` as above; `rebuild` builds the APK again on
    a fresh runner and `verify-build` checks it is byte-for-byte the first
@@ -106,9 +110,8 @@ have, within 90 days of that rc.
    "Run workflow".
 
 dev APKs take their version code from the run number (`-PdevVersionCode`),
-Play bundles from the run number plus 100000 (`-PplayVersionCode`; main
-pushes and rc tags share the counter, so an rc's code is above every
-internal build before it), and release APKs from the source, so F-Droid can
+Play bundles from the run number plus 100000 (`-PplayVersionCode`), and
+release APKs from the source, so F-Droid can
 reproduce them.
 
 Version names: release APKs and main's bundles use `versionName` from
@@ -184,6 +187,16 @@ openssl x509 -in signing-certs/release.pem -noout -fingerprint -sha256 | cut -d=
    its testers, and leave open testing off. Set `PLAY_PACKAGE`
    (repository) and `PLAY_PUBLISHER` (the tester on `qa`, the publisher on
    `prod`). Until then the Play jobs are skipped with a warning.
+
+   Internal testing is a second app, `<PLAY_PACKAGE>.internal` ("Carrier
+   Pigeon Internal"). Create it in Play Console too, take the
+   `bundle-internal` artifact from a main run (its `upload-play` job fails
+   until the app exists) and upload it by hand to the internal track, with
+   Play App Signing on. Give the tester account "Release apps to testing
+   tracks" on it as well (not the publisher: it never goes to production),
+   and add the internal testers. It uses the same upload key, so nothing
+   changes in mobile-build-infra or the Actions variables. Then re-run the
+   failed job.
 6. **First run per key.** A key with no certificate in `signing-certs/` gets
    one made, and the run attaches it instead of shipping. Commit
    `release.pem` and `play.pem` (`dev.pem` is already here), then run again.
@@ -193,7 +206,9 @@ openssl x509 -in signing-certs/release.pem -noout -fingerprint -sha256 | cut -d=
 1. Merge to `dev`; testers get the dev build through App Distribution.
 2. Bump `versionCode` and `versionName` in `app/build.gradle.kts` (F-Droid
    builds the release tag from them, and the release tag must match) and
-   merge `dev` to `main`. The bundle goes to Play's internal track.
+   merge `dev` to `main`. The bundle goes to the internal track of
+   "Carrier Pigeon Internal", which installs beside the closed or
+   production app.
 3. When internal looks good, tag main's latest build as a release
    candidate: `git tag -a v1.2.0-rc.1 -m v1.2.0-rc.1 origin/main && git push
    origin v1.2.0-rc.1`. That commit is built again as 1.2.0 and goes to
