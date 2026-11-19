@@ -7,13 +7,21 @@ name: Release
 #   trigger          channel   GitHub env  built            signed with        goes to
 #   push to dev      dev       dev         dev APK          dev key            Firebase App Distribution
 #                                                                              (group carrier-pigeon-dev)
-#   push to main     internal  qa          prod bundle      play (upload) key  Play internal track
+#   push to main     internal  qa          internal bundle  play (upload) key  Play internal track of the
+#                                          (.internal                          separate .internal app
+#                                          package)
 #   tag vX.Y.Z-rc.N  closed    qa          prod bundle,     play (upload) key  Play closed track
 #                                          versionName
 #                                          X.Y.Z from the tag
 #   tag vX.Y.Z       prod      prod        prod APK,        release key        the rc's closed build promoted
 #                                          rebuilt and                         to production, then the GitHub
 #                                          checked                             release (F-Droid builds the tag)
+#
+# Internal testing is its own app on Play, package <PLAY_PACKAGE>.internal
+# ("Carrier Pigeon Internal", its own launcher icon), so testers can install
+# it beside the closed-testing or production app, which Android doesn't allow
+# for two tracks of one package. Its builds never go further than its
+# internal track.
 #
 # An rc tag builds its own bundle from the tagged commit, with versionName
 # taken from the tag (vX.Y.Z-rc.N gives X.Y.Z), so closed testers see the
@@ -62,7 +70,8 @@ name: Release
 # job without credentials made, so none of Gradle's or pip's dependencies run
 # where the credentials are. Each account can do one thing: a signer per
 # key, app-distribute (App Distribution only), the Play tester (testing
-# tracks of this app) and the Play publisher (production of this app). There
+# tracks of the app and its .internal app) and the Play publisher
+# (production of the app). There
 # are no keystores, passwords or keys in GitHub or on the runner.
 #
 # Each prod run rebuilds the APK on a second, fresh runner and checks the two
@@ -382,16 +391,16 @@ jobs:
 
       # dev builds have their own package, and Play bundles their own
       # version-code range, so their codes only need to grow among
-      # themselves: this workflow's run number, offset. Main pushes and rc
-      # tags share the counter, so an rc's code is above every internal
-      # build before it. prod takes its code from the source.
+      # themselves: this workflow's run number, offset. (Main pushes go to
+      # the .internal app, so only rc tags use the range on the real one.)
+      # prod takes its code from the source.
       - name: Build
         env:
           TAG_VERSION: ${{ needs.setup.outputs.version }}
         run: |
           case "$CHANNEL" in
             dev)      ./gradlew --no-daemon --no-build-cache assembleDevRelease -PdevVersionCode=$((GITHUB_RUN_NUMBER + 1000)) ;;
-            internal) ./gradlew --no-daemon --no-build-cache bundleProdRelease -PplayVersionCode=$((GITHUB_RUN_NUMBER + 100000)) ;;
+            internal) ./gradlew --no-daemon --no-build-cache bundleInternalRelease -PplayVersionCode=$((GITHUB_RUN_NUMBER + 100000)) ;;
             closed)   ./gradlew --no-daemon --no-build-cache bundleProdRelease -PplayVersionCode=$((GITHUB_RUN_NUMBER + 100000)) \
                         "-PplayVersionName=$TAG_VERSION" ;;
             prod)     ./gradlew --no-daemon --no-build-cache assembleProdRelease ;;
@@ -402,7 +411,8 @@ jobs:
           mkdir -p out
           case "$CHANNEL" in
             dev)      cp app/build/outputs/apk/dev/release/app-dev-release-unsigned.apk out/ ;;
-            internal|closed) cp app/build/outputs/bundle/prodRelease/app-prod-release.aab out/ ;;
+            internal) cp app/build/outputs/bundle/internalRelease/app-internal-release.aab out/ ;;
+            closed)   cp app/build/outputs/bundle/prodRelease/app-prod-release.aab out/ ;;
             prod)     cp app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk out/ ;;
           esac
           sha256sum out/*
@@ -707,7 +717,7 @@ jobs:
             echo "Testers: $(jq -r '.testingUri // "n/a"' <<<"$details")"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # The bundle for Play (main's for internal, an rc's for closed), signed
+  # The bundle for Play (main's for the .internal app, an rc's for closed), signed
   # with the upload key. Play App Signing re-signs it with the key Google
   # holds, so Play builds don't carry the release key. An rc bundle's build
   # provenance is what the release tag checks later.
@@ -797,7 +807,7 @@ jobs:
         if: steps.configured.outputs.ok == 'true'
         run: |
           mkdir -p signed
-          cp out/app-prod-release.aab "$AAB"
+          cp out/app-*-release.aab "$AAB"
           scripts/kms_sign.sh aab "$AAB" "$CERT"
           sha256sum "$AAB"
           [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
@@ -818,9 +828,9 @@ jobs:
           compression-level: 0
           retention-days: 90
 
-  # Each main build becomes the release on Play's internal track, and each rc
-  # tag's build the release on the closed track, as the Play tester account
-  # (testing tracks only). Its name shows the tag or commit, for people; the
+  # Each main build becomes the release on the internal track of the
+  # .internal app, and each rc tag's build the release on the real app's
+  # closed track, as the Play tester account (testing tracks only). Its name shows the tag or commit, for people; the
   # release tag goes by version code.
   upload-play:
     needs: [setup, build, sign-bundle]
@@ -889,9 +899,13 @@ jobs:
         run: |
           set -euo pipefail
           RELEASE_NAME="$RELEASE_NAME_PREFIX ${RELEASE_SHA::12}"
-          if [ "$CHANNEL" = closed ]; then TRACK=$CLOSED_TRACK; else TRACK=$INTERNAL_TRACK; fi
-          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PLAY_PACKAGE"
-          upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PLAY_PACKAGE"
+          if [ "$CHANNEL" = closed ]; then
+            TRACK=$CLOSED_TRACK; PACKAGE=$PLAY_PACKAGE
+          else
+            TRACK=$INTERNAL_TRACK; PACKAGE=$PLAY_PACKAGE.internal
+          fi
+          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE"
+          upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PACKAGE"
           auth=(--header "Authorization: Bearer $TOKEN")
           # On an HTTP error, show Google's error body (it names what's
           # missing) instead of only curl's status line.
@@ -905,7 +919,11 @@ jobs:
           }
 
           test -f "$AAB"
-          edit=$(call --request POST "$api/edits" | jq -r .id)
+          # Play's API can't create an app or take its first bundle.
+          if ! edit=$(call --request POST "$api/edits" | jq -r .id); then
+            echo "::error title=No Play app?::If $PACKAGE isn't in Play Console yet, create it, upload the $ARTIFACT bundle from this run by hand, give the Play tester account testing-track rights on it, then re-run this job. docs/signing.md, Setup."
+            exit 1
+          fi
           code=$(call --request POST --header "Content-Type: application/octet-stream" \
             --data-binary "@$AAB" "$upload/edits/$edit/bundles?uploadType=media" | jq -r .versionCode)
           echo "Uploaded version code $code"
@@ -915,7 +933,7 @@ jobs:
             "$api/edits/$edit/tracks/$TRACK" >/dev/null
           call --request POST "$api/edits/$edit:commit" >/dev/null
           echo "### Google Play" >> "$GITHUB_STEP_SUMMARY"
-          echo "$RELEASE_NAME on \`$TRACK\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "$RELEASE_NAME on \`$TRACK\` of \`$PACKAGE\`" >> "$GITHUB_STEP_SUMMARY"
 
   # What F-Droid will check, before anyone is asked to approve: the
   # independent rebuild is byte-for-byte the build we will sign.
