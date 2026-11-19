@@ -14,7 +14,11 @@ android {
         // Release APKs (and F-Droid, which rebuilds them from the tag) take
         // these from the source, so a release is reproducible. Only dev APKs
         // and Play bundles override the code, with -PdevVersionCode and
-        // -PplayVersionCode (release.yml).
+        // -PplayVersionCode (release.yml). An rc tag's Play bundle takes
+        // versionName from the tag (-PplayVersionName), and a vX.Y.Z tag must
+        // match versionName here, so Play and F-Droid users see exactly
+        // X.Y.Z. dev and debug builds add the commit to it (see
+        // androidComponents below).
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -28,14 +32,16 @@ android {
         create("dev") {
             dimension = "channel"
             applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
             providers.gradleProperty("devVersionCode").orNull?.let { versionCode = it.toInt() }
         }
         create("prod") {
             dimension = "channel"
-            // Play bundles from main only. F-Droid never builds them, so the
-            // release APK keeps the code above.
+            // Play bundles from main and rc tags only. F-Droid never builds
+            // them, so the release APK keeps the code above. An rc tag's
+            // bundle also takes its versionName from the tag (vX.Y.Z-rc.N
+            // gives X.Y.Z).
             providers.gradleProperty("playVersionCode").orNull?.let { versionCode = it.toInt() }
+            providers.gradleProperty("playVersionName").orNull?.let { versionName = it }
         }
     }
 
@@ -45,7 +51,6 @@ android {
         // the dev and release builds.
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
             // Pick "English (XA)" (long, accented text) or "Arabic (XB)" (right to left) in the
             // system language settings to check layouts without a translation.
             isPseudoLocalesEnabled = true
@@ -110,6 +115,52 @@ android {
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
+    }
+}
+
+// dev and debug builds say which commit they are, for example
+//   devRelease (Firebase)            0.1.0-dev.15+11a78e2
+//   devDebug                         0.1.0-dev-debug.15+11a78e2
+//   prodDebug  (build.yml sideload)  0.1.0-debug.15+11a78e2
+// 15 is the number of commits in HEAD's history, so it only grows along a
+// branch (dev never contains main's tags, so "commits since the last tag"
+// wouldn't work there), and 11a78e2 is HEAD's short SHA. A local build with
+// uncommitted changes adds ".dirty". prodRelease (Play, F-Droid, GitHub
+// releases) is left as versionName: no git, so F-Droid's shallow clone
+// builds the same APK.
+val gitDescription: Provider<String> = run {
+    fun git(vararg args: String) = providers.exec {
+        commandLine("git", *args)
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim() }
+    val count = git("rev-list", "--count", "HEAD")
+    val sha = git("rev-parse", "--short=7", "HEAD")
+    val shallow = git("rev-parse", "--is-shallow-repository")
+    val dirty = git("status", "--porcelain", "--untracked-files=no")
+    count.zip(shallow) { c, sh -> c.takeIf { sh == "false" }.orEmpty() }
+        .zip(sha) { c, s -> c to s }
+        .zip(dirty) { (c, s), d ->
+            if (s.isEmpty()) {
+                "+unknown" // not a git checkout
+            } else {
+                // A shallow clone's count is meaningless, so leave it out.
+                (if (c.isEmpty()) "" else ".$c") + "+$s" + (if (d.isEmpty()) "" else ".dirty")
+            }
+        }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val label = listOfNotNull(
+            "dev".takeIf { variant.flavorName == "dev" },
+            "debug".takeIf { variant.buildType == "debug" },
+        ).joinToString("-")
+        if (label.isNotEmpty()) {
+            variant.outputs.forEach { output ->
+                val base = output.versionName.orNull.orEmpty()
+                output.versionName.set(gitDescription.map { git -> "$base-$label$git" })
+            }
+        }
     }
 }
 
