@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The internal-testing app installs beside the closed-testing and production app; tell them apart. -->
+    <string name="app_name">Carrier Pigeon Internal</string>
+    <string name="widget_name">Data SIM (internal)</string>
+</resources>
