@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carrier Pigeon icon artwork: not licensed under the Apache License. See TRADEMARKS.md. -->
+<!-- Internal-testing launcher icon background: the main icon's sky in teal, so this
+     build stands out from the closed-testing and production app in the launcher. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="0"
+                android:endY="108">
+                <item android:offset="0" android:color="#FF3FA58E" />
+                <item android:offset="1" android:color="#FF15584F" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.16"
+        android:pathData="M14,90 Q14,81 23,82 Q27,74 36,77 Q43,74 47,81 Q54,81 54,90 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.16"
+        android:pathData="M62,94 Q62,87 70,87 Q74,80 82,83 Q90,81 92,88 Q100,88 100,94 Z" />
+</vector>
