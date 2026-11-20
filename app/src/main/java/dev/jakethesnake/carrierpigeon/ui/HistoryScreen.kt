@@ -58,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -206,7 +207,6 @@ fun HistoryScreen(state: HistoryUiState, actions: HistoryActions) {
     var pickRetention by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     var scrubAt by remember(state.range, state.offset) { mutableStateOf<Long?>(null) }
-    val res = LocalContext.current.resources
 
     Scaffold(
         topBar = {
@@ -258,7 +258,8 @@ fun HistoryScreen(state: HistoryUiState, actions: HistoryActions) {
                     Note(stringResource(R.string.history_started, formatMoment(LocalContext.current, data.firstRecord, HistoryRange.MONTH)))
                 }
                 val colors = historyColors()
-                val ticks = remember(data.window) { ticks(data.window, ZoneId.systemDefault(), res.configuration.locales[0]) }
+                val locale = LocalConfiguration.current.locales[0]
+                val ticks = remember(data.window, locale) { ticks(data.window, ZoneId.systemDefault(), locale) }
                 InternetCard(data, colors, ticks, scrubAt) { scrubAt = it }
                 VpnCard(data, colors, ticks, scrubAt) { scrubAt = it }
                 SignalCard(data, colors, ticks, scrubAt) { scrubAt = it }
@@ -482,7 +483,7 @@ private fun Readout(data: HistoryData, at: Long?) {
         HistoryMath.valueAt(data.vpn, at)?.let { vpn ->
             parts += res.getString(if (vpn) R.string.history_readout_vpn_on else R.string.history_readout_vpn_off)
         }
-        val number = NumberFormat.getNumberInstance(res.configuration.locales[0]).apply { maximumFractionDigits = 1 }
+        val number = NumberFormat.getNumberInstance(LocalConfiguration.current.locales[0]).apply { maximumFractionDigits = 1 }
         data.signal.forEach { s ->
             val bars: Double? = if (s.bucketMs == 0L) {
                 HistoryMath.signalAt(s.points, at)?.bars?.toDouble()
