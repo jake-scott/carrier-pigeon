@@ -59,7 +59,7 @@ class HistoryStore private constructor(context: Context) {
         db.inTransaction {
             advance(
                 table = "access_period",
-                where = null,
+                subId = null,
                 values = linkedMapOf(
                     "access" to access.access.name,
                     "sub_id" to access.subId,
