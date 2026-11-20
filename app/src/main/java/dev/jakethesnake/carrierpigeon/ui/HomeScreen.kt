@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
@@ -85,6 +86,8 @@ interface HomeActions {
     fun refresh()
     /** Opens the system screen that sets this app's language (Android 13+). */
     fun openLanguageSettings()
+    /** Opens the History page. */
+    fun openHistory()
     /** Newest first. */
     fun readLog(): List<String>
     fun shareLog()
@@ -93,7 +96,7 @@ interface HomeActions {
 
 /**
  * The app's one screen: how the phone reaches the internet, a Wi-Fi tile, a tile per active SIM,
- * then the "Show network detail" switch. Refresh and
+ * then the "Show network detail" switch. Refresh, History and
  * the switch log live in the menu at the top right.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,6 +125,11 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
                             text = { Text(stringResource(R.string.menu_refresh)) },
                             leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
                             onClick = { menuOpen = false; actions.refresh() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.menu_history)) },
+                            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+                            onClick = { menuOpen = false; actions.openHistory() },
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.menu_switch_log)) },

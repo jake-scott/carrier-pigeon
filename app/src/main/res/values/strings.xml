@@ -184,4 +184,94 @@
     <string name="widget_marker_default">default</string>
     <!-- Widget marker after the carrier name: the phone moved data to the other SIM. Lowercase, very short. -->
     <string name="widget_marker_backup">backup</string>
+
+    <!-- History page. -->
+    <!-- Menu item: open the History page (graphs of past connections, VPN and signal). -->
+    <string name="menu_history">History</string>
+    <!-- Title of the History page. -->
+    <string name="history_title">History</string>
+    <!-- Accessibility label for the back arrow on the History page. -->
+    <string name="history_back">Back</string>
+    <!-- Accessibility label for the History page's options button. -->
+    <string name="history_menu_more">More options</string>
+    <!-- History page menu item with a switch: whether the app records history. -->
+    <string name="history_menu_record">Record history</string>
+    <!-- History page menu item: choose how long history is kept. -->
+    <string name="history_menu_keep">Keep history for…</string>
+    <!-- History page menu item: delete all history. -->
+    <string name="history_menu_clear">Clear history</string>
+    <!-- Range button on the History page: one day. -->
+    <string name="history_range_day">Day</string>
+    <!-- Range button on the History page: seven days. -->
+    <string name="history_range_week">Week</string>
+    <!-- Range button on the History page: one calendar month. -->
+    <string name="history_range_month">Month</string>
+    <!-- Range button on the History page: twelve months. -->
+    <string name="history_range_year">Year</string>
+    <!-- Accessibility label: show the period before this one. -->
+    <string name="history_previous">Earlier</string>
+    <!-- Accessibility label: show the period after this one. -->
+    <string name="history_next">Later</string>
+    <!-- Range label on the History page for the current day. -->
+    <string name="history_today">Today</string>
+    <!-- Range label on the History page for the day before. -->
+    <string name="history_yesterday">Yesterday</string>
+    <!-- Card title: what carried the internet over time (Wi-Fi, a SIM…). -->
+    <string name="history_internet_via">Internet via</string>
+    <!-- Card title: when a VPN was on. VPN is a technical name. -->
+    <string name="history_vpn">VPN</string>
+    <!-- Beside the VPN card title. %1$s is a percentage, e.g. "62%". -->
+    <string name="history_vpn_share">On %1$s of the recorded time</string>
+    <!-- Card title: signal strength over time. -->
+    <string name="history_signal">Signal</string>
+    <!-- Beside the Signal card title: the chart's scale, in status-bar bars. -->
+    <string name="history_signal_hint">Bars, 0 to 4</string>
+    <!-- Card title: share of time on each network type (5G NSA, LTE…) per SIM. -->
+    <string name="history_network">Network type</string>
+    <!-- In the History legend and readout: no internet connection. -->
+    <string name="history_no_internet">No internet</string>
+    <!-- In the History legend: a connection other than Wi-Fi, mobile data or Ethernet (Bluetooth, USB…). -->
+    <string name="history_access_other">Other</string>
+    <!-- In the History readout: nothing was recorded at that moment. -->
+    <string name="history_unknown">Not recorded</string>
+    <!-- A legend entry: %1$s is a name ("Wi-Fi", a SIM, "5G NSA"), %2$s an amount ("3 h 20 min", "71%"). -->
+    <string name="history_total">%1$s %2$s</string>
+    <!-- Accessibility description of a chart: %1$s is the card title, %2$s a summary of it. -->
+    <string name="history_desc">%1$s: %2$s</string>
+    <!-- In the History readout: %1$s is a SIM name or "Wi-Fi", %2$s the signal in bars (may have a decimal). -->
+    <string name="history_signal_value">%1$s %2$s/4</string>
+    <!-- In the History readout: a VPN was on. -->
+    <string name="history_readout_vpn_on">VPN on</string>
+    <!-- In the History readout: no VPN. -->
+    <string name="history_readout_vpn_off">VPN off</string>
+    <!-- Under the charts before anything is picked. -->
+    <string name="history_readout_hint">Touch or drag across a chart to see that moment</string>
+    <!-- In the Signal card when there are no readings for the period. -->
+    <string name="history_nothing_recorded">Nothing recorded in this period.</string>
+    <!-- Small print at the bottom of the History page. -->
+    <string name="history_gaps_note">Pale stretches are times when Android didn\'t let the app run, or before history started.</string>
+    <!-- Note at the top of the History page. %1$s is a date and time. -->
+    <string name="history_started">Recording started %1$s</string>
+    <!-- Shown on the History page before anything has been recorded. -->
+    <string name="history_empty">No history yet. It builds up from now on as your connection changes.</string>
+    <!-- Shown on the History page when recording is switched off. -->
+    <string name="history_off">History is off. Turn on Record history in the menu to start.</string>
+    <!-- Dialog title: how long to keep history. -->
+    <string name="history_keep_title">Keep history for</string>
+    <!-- Choice in the Keep history dialog. -->
+    <string name="history_keep_1_month">1 month</string>
+    <!-- Choice in the Keep history dialog. -->
+    <string name="history_keep_3_months">3 months</string>
+    <!-- Choice in the Keep history dialog. -->
+    <string name="history_keep_1_year">1 year</string>
+    <!-- Confirmation dialog title before deleting history. -->
+    <string name="history_clear_title">Clear history?</string>
+    <!-- Confirmation dialog text before deleting history. -->
+    <string name="history_clear_body">This deletes all connection, VPN and signal history kept on this phone.</string>
+    <!-- A length of time. %1$d is minutes. -->
+    <string name="history_duration_minutes">%1$d min</string>
+    <!-- A length of time. %1$d is hours, %2$d minutes. -->
+    <string name="history_duration_hours">%1$d h %2$d min</string>
+    <!-- A length of time. %1$d is days, %2$d hours. -->
+    <string name="history_duration_days">%1$d d %2$d h</string>
 </resources>

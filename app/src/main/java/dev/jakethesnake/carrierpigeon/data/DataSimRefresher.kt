@@ -4,6 +4,7 @@ package dev.jakethesnake.carrierpigeon.data
 import android.content.Context
 import android.telephony.SubscriptionManager
 import androidx.glance.appwidget.updateAll
+import dev.jakethesnake.carrierpigeon.data.history.HistoryRecorder
 import dev.jakethesnake.carrierpigeon.widget.CarrierPigeonWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -65,16 +66,18 @@ object DataSimRefresher {
         withContext(Dispatchers.Main) { DataSimMonitor.registerInProcessListeners(app) }
         // A listener registered just now delivers the 5G NSA override a moment later; wait for it.
         if (DeviceFeatures.hasTelephony(app)) DisplayInfoTracker.awaitFirst(SubscriptionManager.getActiveDataSubscriptionId())
-        val changed = mutex.withLock {
+        val (changed, state) = mutex.withLock {
             val store = StateStore(app)
             val old = store.current()
             val new = DataSimResolver(app).resolve(networkSubId).keepKnownDetails(old)
             val changed = old == null || old.withoutVolatile() != new.withoutVolatile()
             if (changed || !reason.isOnlyNoisy()) SwitchLog(app).append(reason, old, new)
             if (changed) store.save(new)
-            changed
+            changed to new
         }
         if (changed) CarrierPigeonWidget().updateAll(app)
+        // Changed or not: an unchanged state confirms that its history period still holds.
+        HistoryRecorder.onState(app, state)
     }
 
     /** Mid-switch, SIM details can briefly be unreadable; keep what we knew about the same SIM. */
@@ -92,7 +95,9 @@ object DataSimRefresher {
         }
 
     private fun String.isOnlyNoisy() = split("+").all {
-        it == DataSimMonitor.DEFAULT_NETWORK_REASON || it == DataSimMonitor.SERVICE_STATE_REASON
+        it == DataSimMonitor.DEFAULT_NETWORK_REASON ||
+            it == DataSimMonitor.SERVICE_STATE_REASON ||
+            it == DataSimMonitor.HISTORY_SAMPLE_REASON
     }
 
     private fun DataSimState.withoutVolatile() = copy(networkSubId = -1, updatedAtMillis = 0)

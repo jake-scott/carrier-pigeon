@@ -60,7 +60,7 @@ import dev.jakethesnake.carrierpigeon.widget.CarrierPigeonWidget
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
-/** The app screen: a tile per active SIM (see [HomeScreen]), with the switch log in the menu. */
+/** The app screen: a tile per active SIM (see [HomeScreen]), with history and the switch log in the menu. */
 class MainActivity : ComponentActivity() {
     /** Bumped each time the widget opens us to ask for phone access. */
     private var accessRequests by mutableIntStateOf(0)
@@ -114,8 +114,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** The app's Material theme, shared with the History page. */
 @Composable
-private fun AppTheme(content: @Composable () -> Unit) {
+internal fun AppTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val scheme = when {
@@ -249,6 +250,10 @@ private fun MainScreen(accessRequests: Int) {
                 context.startActivity(
                     Intent(Settings.ACTION_APP_LOCALE_SETTINGS, Uri.fromParts("package", context.packageName, null)),
                 )
+            }
+
+            override fun openHistory() {
+                context.startActivity(Intent(context, HistoryActivity::class.java))
             }
 
             override fun readLog(): List<String> = log.readLines().asReversed()

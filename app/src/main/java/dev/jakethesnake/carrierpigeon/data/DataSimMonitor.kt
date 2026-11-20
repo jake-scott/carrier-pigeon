@@ -16,6 +16,7 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
+import dev.jakethesnake.carrierpigeon.data.history.HistoryRecorder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,6 +39,8 @@ object DataSimMonitor {
     const val SERVICE_STATE_REASON = "service-state"
     /** 5G NSA / LTE+ overrides; can change often as the phone moves between cells. */
     const val DISPLAY_INFO_REASON = "display-info"
+    /** The history sampler's 15-minute refresh; only logged when something changed. */
+    const val HISTORY_SAMPLE_REASON = "history-sample"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var telephonyCallback: Any? = null
@@ -120,13 +123,17 @@ object DataSimMonitor {
         syncDisplayInfoListeners(app)
     }
 
-    /** One display-info listener per active SIM, plus the active data SIM if we can't list SIMs. */
+    /**
+     * One display-info listener per active SIM, plus the active data SIM if we can't list SIMs.
+     * History's signal listeners follow the same set.
+     */
     private fun syncDisplayInfoListeners(app: Context) {
         val subIds = DataSimResolver(app).activeSubscriptions().map { it.subscriptionId }.toMutableSet()
         subIds += SubscriptionManager.getActiveDataSubscriptionId()
         DisplayInfoTracker.sync(app, subIds) {
             scope.launch { DataSimRefresher.refresh(app, DISPLAY_INFO_REASON) }
         }
+        HistoryRecorder.syncSignalListeners(app, subIds)
     }
 
     private fun registerTelephonyCallback(app: Context) {

@@ -24,9 +24,16 @@
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
 
+    <!--
+        No backups at all. Everything the app keeps describes this phone (SIM ids, signal, the
+        switch log, connection history), so it would be wrong, or private, anywhere else.
+        allowBackup="false" stops cloud backup; from Android 12 device-to-device transfer ignores
+        it, so data_extraction_rules.xml excludes everything from both.
+    -->
     <application
         android:name=".CarrierPigeonApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -41,6 +48,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.HistoryActivity"
+            android:exported="false"
+            android:label="@string/history_title"
+            android:parentActivityName=".ui.MainActivity" />
 
         <receiver
             android:name=".data.NetworkChangeReceiver"
