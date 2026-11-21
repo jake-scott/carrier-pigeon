@@ -6,6 +6,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -44,6 +45,26 @@ class AppSettings(context: Context) {
         store.edit { it[ASKED_LOCATION_ACCESS] = true }
     }
 
+    /** Record connection, VPN and signal history (see data/history). On by default. */
+    val historyEnabled: Flow<Boolean> = store.data.map { it[HISTORY_ENABLED] ?: true }
+
+    suspend fun historyEnabled(): Boolean = historyEnabled.first()
+
+    suspend fun setHistoryEnabled(enabled: Boolean) {
+        store.edit { it[HISTORY_ENABLED] = enabled }
+    }
+
+    /** How many days of history to keep: one of [HISTORY_RETENTION_CHOICES]. */
+    val historyRetentionDays: Flow<Int> = store.data.map { p ->
+        p[HISTORY_RETENTION_DAYS]?.takeIf { it in HISTORY_RETENTION_CHOICES } ?: DEFAULT_HISTORY_RETENTION_DAYS
+    }
+
+    suspend fun historyRetentionDays(): Int = historyRetentionDays.first()
+
+    suspend fun setHistoryRetentionDays(days: Int) {
+        store.edit { it[HISTORY_RETENTION_DAYS] = days }
+    }
+
     /** Language tags the widget was last drawn in, so a language change can redraw it. */
     suspend fun widgetLanguage(): String? = store.data.first()[WIDGET_LANGUAGE]
 
@@ -51,10 +72,16 @@ class AppSettings(context: Context) {
         store.edit { it[WIDGET_LANGUAGE] = tags }
     }
 
-    private companion object {
-        val SHOW_NETWORK_DETAIL = booleanPreferencesKey("show_network_detail")
-        val ASKED_PHONE_ACCESS = booleanPreferencesKey("asked_phone_access")
-        val ASKED_LOCATION_ACCESS = booleanPreferencesKey("asked_location_access")
-        val WIDGET_LANGUAGE = stringPreferencesKey("widget_language")
+    companion object {
+        /** The History page's "Keep history for" choices, in days. */
+        val HISTORY_RETENTION_CHOICES = listOf(31, 92, 366)
+        const val DEFAULT_HISTORY_RETENTION_DAYS = 366
+
+        private val HISTORY_ENABLED = booleanPreferencesKey("history_enabled")
+        private val HISTORY_RETENTION_DAYS = intPreferencesKey("history_retention_days")
+        private val SHOW_NETWORK_DETAIL = booleanPreferencesKey("show_network_detail")
+        private val ASKED_PHONE_ACCESS = booleanPreferencesKey("asked_phone_access")
+        private val ASKED_LOCATION_ACCESS = booleanPreferencesKey("asked_location_access")
+        private val WIDGET_LANGUAGE = stringPreferencesKey("widget_language")
     }
 }

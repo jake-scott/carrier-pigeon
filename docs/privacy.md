@@ -5,7 +5,7 @@ permalink: /privacy
 
 # Carrier Pigeon privacy policy
 
-_Last updated: 16 November 2026_
+_Last updated: 20 November 2026_
 
 Carrier Pigeon (`dev.jakethesnake.carrierpigeon`) is an Android app and home-screen widget that shows which SIM is carrying your mobile data and how your phone is reaching the internet. This policy explains what information the app uses and what happens to it.
 
@@ -29,9 +29,11 @@ Carrier Pigeon collects nothing. It has no accounts, no ads, no analytics and no
 - **Your settings:** whether to show network detail, the widget's language, and whether the app has already asked for each permission.
 - **A diagnostic switch log** of up to the 500 most recent events. Each line has a timestamp, the SIM's display name and Android's internal ID numbers for the SIMs involved, the network type, the connection type (for example Wi-Fi or mobile) and whether a VPN was on. It does not contain the Wi-Fi network name, your location, or your phone number.
 
-This data lives in the app's private storage. You can clear the log from the app's menu at any time, and uninstalling the app or clearing its storage deletes all of it.
+- **Connection history**, shown on the History page: when the phone used Wi-Fi, each SIM, Ethernet or no connection, whether data had switched SIM automatically, each SIM's network type (such as LTE or 5G), whether a VPN was on, and signal strength in bars and dBm for each SIM and for Wi-Fi, each with the time. It is kept for up to a year (you can choose 1 month, 3 months or 1 year), with readings older than a month summarised by the hour. It does not contain the Wi-Fi network name, your location, or your phone number. To fill in the signal history, the app takes a reading about every 15 minutes in the background, which Android may delay to save battery; this uses no network.
 
-If Android's own backup is turned on for your device, Android may include this app data in your device backup. That backup is made and stored by Android and your backup provider (usually Google), under their privacy policy, not by Carrier Pigeon.
+This data lives in the app's private storage. You can clear the log from the app's menu, and clear history or switch it off from the History page's menu, at any time. Uninstalling the app or clearing its storage deletes all of it.
+
+Carrier Pigeon opts out of Android backup: none of this data is included in your device's cloud backup, and none of it is copied to a new phone during a device-to-device transfer. Everything it stores describes this phone, so it stays on this phone.
 
 ## Sharing the log
 
