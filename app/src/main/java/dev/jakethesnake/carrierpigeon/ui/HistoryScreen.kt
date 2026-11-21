@@ -415,15 +415,11 @@ private fun SignalCard(data: HistoryData, colors: HistoryColors, ticks: List<Tic
             return@ChartCard
         }
         val shown = data.signal.filter { it.source.key !in hidden }
-        val lines = shown.map { s ->
-            val color = colors.of(s.source, data.sims)
-            if (window.range == HistoryRange.DAY) SignalLine(color, points = s.points) else SignalLine(color, buckets = s.buckets, bucketMs = s.bucketMs)
-        }
-        SignalChart(
-            lines = lines,
+        SignalBarChart(
+            series = shown.map { s -> SignalBars(colors.of(s.source, data.sims), s.buckets) },
+            slots = data.signalSlots,
             from = window.from,
             to = window.to,
-            now = data.now,
             description = res.getString(
                 R.string.history_desc,
                 res.getString(R.string.history_signal),
@@ -484,12 +480,10 @@ private fun Readout(data: HistoryData, at: Long?) {
             parts += res.getString(if (vpn) R.string.history_readout_vpn_on else R.string.history_readout_vpn_off)
         }
         val number = NumberFormat.getNumberInstance(LocalConfiguration.current.locales[0]).apply { maximumFractionDigits = 1 }
+        // The signal chart's bar under the picked moment.
+        val slot = data.signalSlots.lastOrNull { it <= at }
         data.signal.forEach { s ->
-            val bars: Double? = if (s.bucketMs == 0L) {
-                HistoryMath.signalAt(s.points, at)?.bars?.toDouble()
-            } else {
-                s.buckets.firstOrNull { at >= it.start && at < it.start + s.bucketMs }?.barsAvg
-            }
+            val bars = slot?.let { start -> s.buckets.firstOrNull { it.start == start }?.barsAvg }
             if (bars != null) parts += res.getString(R.string.history_signal_value, sourceLabel(res, s.source, data.sims), number.format(bars))
         }
         parts.joinToString(" · ")
@@ -545,7 +539,11 @@ private fun RetentionDialog(current: Int, onPick: (Int) -> Unit, onDismiss: () -
 
 // ---- colours and words ----
 
-/** The History page's colours. SIMs use the colour Android gives them, like the SIM tiles. */
+/**
+ * The History page's colours, from the Okabe-Ito palette so neighbouring bars and bands stay
+ * distinct with colour-blindness too. SIMs take a colour by slot rather than Android's SIM tint,
+ * which is often blue and green, hard to tell apart side by side.
+ */
 data class HistoryColors(
     val wifi: Color,
     val ethernet: Color,
@@ -568,11 +566,14 @@ data class HistoryColors(
         is SignalSource.Sim -> simColor(source.subId, sims)
     }
 
-    private fun simColor(subId: Int, sims: Map<Int, SimRecord>): Color =
-        sims[subId]?.iconTint?.takeIf { it != 0 }?.let { Color(it) } ?: SIM_FALLBACK[abs(subId) % SIM_FALLBACK.size]
+    /** SIM 1 blue, SIM 2 reddish purple, then bluish green and sky blue; by sub id when the slot is unknown. */
+    private fun simColor(subId: Int, sims: Map<Int, SimRecord>): Color {
+        val index = sims[subId]?.slotIndex?.takeIf { it >= 0 } ?: abs(subId)
+        return SIM_COLORS[index % SIM_COLORS.size]
+    }
 
     private companion object {
-        val SIM_FALLBACK = listOf(Color(0xFF1A73E8), Color(0xFF12A4AF), Color(0xFF188038), Color(0xFF9334E6))
+        val SIM_COLORS = listOf(Color(0xFF0072B2), Color(0xFFCC79A7), Color(0xFF009E73), Color(0xFF56B4E9))
     }
 }
 
@@ -580,8 +581,8 @@ data class HistoryColors(
 private fun historyColors(): HistoryColors {
     val scheme = MaterialTheme.colorScheme
     return HistoryColors(
-        wifi = Color(0xFFE37400),
-        ethernet = Color(0xFF8E24AA),
+        wifi = Color(0xFFE69F00),
+        ethernet = Color(0xFFD55E00),
         other = Color(0xFF757575),
         none = scheme.error,
         unknown = scheme.surfaceVariant,

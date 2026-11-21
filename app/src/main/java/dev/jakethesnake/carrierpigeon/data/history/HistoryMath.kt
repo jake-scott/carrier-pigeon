@@ -80,9 +80,6 @@ object HistoryMath {
      */
     const val GAP_TOLERANCE_MS = 20 * MINUTE_MS
 
-    /** Signal readings further apart than this are drawn with a break between them. */
-    const val SIGNAL_GAP_MS = 30 * MINUTE_MS
-
     /** Never store more than one signal sample per source in this time. */
     const val SIGNAL_MIN_SPACING_MS = 30_000L
 
@@ -166,12 +163,14 @@ object HistoryMath {
             .sortedBy { it.start }
 
     /**
-     * Regroups buckets (for example stored hourly rollups) into larger buckets of [bucketMs] from
-     * [from], weighting each by its sample count.
+     * Summarises [buckets] (for example hourly ones) into one bucket per slot, weighting each by
+     * its sample count. [slots] are the slot starts in order; the last slot runs to [end]. Each
+     * result's start is its slot's start; slots with no readings are left out.
      */
-    fun regroup(buckets: List<SignalBucket>, from: Long, bucketMs: Long): List<SignalBucket> =
-        buckets.filter { it.start >= from && it.samples > 0 }
-            .groupBy { from + (it.start - from) / bucketMs * bucketMs }
+    fun intoSlots(buckets: List<SignalBucket>, slots: List<Long>, end: Long): List<SignalBucket> {
+        if (slots.isEmpty()) return emptyList()
+        return buckets.filter { it.samples > 0 && it.start >= slots.first() && it.start < end }
+            .groupBy { b -> slots.last { it <= b.start } }
             .map { (start, bs) ->
                 val n = bs.sumOf { it.samples }
                 val withDbm = bs.filter { it.dbmAvg != null }
@@ -186,20 +185,7 @@ object HistoryMath {
                 )
             }
             .sortedBy { it.start }
-
-    /** Splits readings where two neighbours are more than [gapMs] apart, so the line breaks there. */
-    fun runs(points: List<SignalPoint>, gapMs: Long = SIGNAL_GAP_MS): List<List<SignalPoint>> {
-        val out = mutableListOf<MutableList<SignalPoint>>()
-        points.sortedBy { it.at }.forEach { p ->
-            val run = out.lastOrNull()
-            if (run == null || p.at - run.last().at > gapMs) out += mutableListOf(p) else run += p
-        }
-        return out
     }
-
-    /** The reading in force at [at]: the latest at or before it, if no older than [gapMs]. */
-    fun signalAt(points: List<SignalPoint>, at: Long, gapMs: Long = SIGNAL_GAP_MS): SignalPoint? =
-        points.lastOrNull { it.at <= at }?.takeIf { at - it.at <= gapMs }
 
     /**
      * Seconds of each period inside each whole hour, for rolling network-type periods up into
@@ -252,12 +238,22 @@ object HistoryMath {
         return out
     }
 
-    /** Signal bucket length for the averaged views. */
-    fun bucketMs(range: HistoryRange): Long = when (range) {
-        HistoryRange.DAY -> 0L
-        HistoryRange.WEEK -> HOUR_MS
-        HistoryRange.MONTH -> 6 * HOUR_MS
-        HistoryRange.YEAR -> DAY_MS
+    /**
+     * Where each bar of the signal chart starts: every hour for a day, every 6 hours for a week,
+     * each day for a month and each month for a year. Hours are counted on the clock, so a day
+     * with a time change has 23 or 25 bars.
+     */
+    fun slotStarts(window: HistoryWindow, zone: ZoneId): List<Long> {
+        val hours = when (window.range) {
+            HistoryRange.DAY -> 1L
+            HistoryRange.WEEK -> 6L
+            HistoryRange.MONTH, HistoryRange.YEAR -> return barStarts(window, zone)
+        }
+        val start = Instant.ofEpochMilli(window.from).atZone(zone)
+        return generateSequence(0L) { it + hours }
+            .map { start.plusHours(it).toInstant().toEpochMilli() }
+            .takeWhile { it < window.to }
+            .toList()
     }
 
     /** Whole hours and minutes in [ms], for "3 h 20 m" style totals. */

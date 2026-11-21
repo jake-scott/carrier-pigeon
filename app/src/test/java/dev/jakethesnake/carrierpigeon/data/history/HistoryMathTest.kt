@@ -112,26 +112,23 @@ class HistoryMathTest {
     }
 
     @Test
-    fun regroupWeightsBySampleCount() {
+    fun intoSlotsWeightsBySampleCountAndKeysBySlotStart() {
         val hours = listOf(
             SignalBucket(t0, 3, 1.0, 0, 2, -110.0),
             SignalBucket(t0 + HOUR_MS, 1, 4.0, 4, 4, null),
+            SignalBucket(t0 + 7 * HOUR_MS, 2, 3.0, 3, 3, -90.0),
         )
-        val merged = HistoryMath.regroup(hours, t0, 6 * HOUR_MS)
-        assertEquals(listOf(SignalBucket(t0, 4, 1.75, 0, 4, -110.0)), merged)
+        val slots = listOf(t0, t0 + 6 * HOUR_MS)
+        assertEquals(
+            listOf(SignalBucket(t0, 4, 1.75, 0, 4, -110.0), SignalBucket(t0 + 6 * HOUR_MS, 2, 3.0, 3, 3, -90.0)),
+            HistoryMath.intoSlots(hours, slots, t0 + 12 * HOUR_MS),
+        )
     }
 
     @Test
-    fun runsBreakWhereReadingsAreFarApart() {
-        val points = listOf(
-            SignalPoint(t0, 1, null),
-            SignalPoint(t0 + 20 * MINUTE_MS, 2, null),
-            SignalPoint(t0 + 2 * HOUR_MS, 3, null),
-        )
-        val runs = HistoryMath.runs(points)
-        assertEquals(listOf(2, 1), runs.map { it.size })
-        assertEquals(2, HistoryMath.signalAt(points, t0 + 25 * MINUTE_MS)?.bars)
-        assertNull(HistoryMath.signalAt(points, t0 + HOUR_MS))
+    fun intoSlotsDropsReadingsOutsideTheWindow() {
+        val hours = listOf(SignalBucket(t0 - HOUR_MS, 1, 2.0, 2, 2, null), SignalBucket(t0 + 2 * HOUR_MS, 1, 2.0, 2, 2, null))
+        assertEquals(emptyList<SignalBucket>(), HistoryMath.intoSlots(hours, listOf(t0), t0 + HOUR_MS))
     }
 
     @Test
@@ -172,6 +169,19 @@ class HistoryMathTest {
         val bars = HistoryMath.barStarts(year, utc)
         assertEquals(12, bars.size)
         assertEquals(ms("2026-11-01", utc), bars.last())
+    }
+
+    @Test
+    fun signalSlotsPerRange() {
+        val utc = ZoneOffset.UTC
+        val now = ms("2026-11-20", utc)
+        assertEquals(24, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.DAY, 0, now, utc), utc).size)
+        assertEquals(28, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.WEEK, 0, now, utc), utc).size)
+        assertEquals(30, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.MONTH, 0, now, utc), utc).size)
+        assertEquals(12, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.YEAR, 0, now, utc), utc).size)
+        val london = ZoneId.of("Europe/London")
+        val clockChange = ms("2026-10-25", london) + 12 * HOUR_MS
+        assertEquals(25, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.DAY, 0, clockChange, london), london).size)
     }
 
     @Test
