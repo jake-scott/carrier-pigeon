@@ -86,6 +86,7 @@ import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
@@ -124,10 +125,10 @@ private fun HistoryRoute(onBack: () -> Unit) {
     LaunchedEffect(range, offset, reload) {
         data = withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
-            HistoryLoader.load(store, HistoryMath.window(range, offset, now, ZoneId.systemDefault()), now, HistoryRecorder.liveSince)
+            HistoryLoader.load(store, HistoryMath.window(range, offset, now), now, HistoryRecorder.liveSince)
         }
     }
-    // The current window grows while you watch.
+    // The current window slides along while you watch.
     LaunchedEffect(range, offset) {
         if (offset != 0) return@LaunchedEffect
         while (true) {
@@ -365,9 +366,8 @@ private fun InternetCard(data: HistoryData, colors: HistoryColors, ticks: List<T
                 markers = data.switches,
             )
         } else {
-            val starts = HistoryMath.barStarts(window, ZoneId.systemDefault())
-            val bars = starts.mapIndexedNotNull { i, start ->
-                if (start >= data.now) return@mapIndexedNotNull null
+            val starts = data.slots
+            val bars = starts.mapIndexed { i, start ->
                 val end = starts.getOrNull(i + 1) ?: window.to
                 val within = HistoryMath.totals(HistoryMath.clip(data.access, start, end))
                 StackedBar(start, end, order.mapNotNull { k -> within[k]?.let { colors.of(k, data.sims) to it.toFloat() / (end - start) } })
@@ -417,7 +417,7 @@ private fun SignalCard(data: HistoryData, colors: HistoryColors, ticks: List<Tic
         val shown = data.signal.filter { it.source.key !in hidden }
         SignalBarChart(
             series = shown.map { s -> SignalBars(colors.of(s.source, data.sims), s.buckets) },
-            slots = data.signalSlots,
+            slots = data.slots,
             from = window.from,
             to = window.to,
             description = res.getString(
@@ -481,7 +481,7 @@ private fun Readout(data: HistoryData, at: Long?) {
         }
         val number = NumberFormat.getNumberInstance(LocalConfiguration.current.locales[0]).apply { maximumFractionDigits = 1 }
         // The signal chart's bar under the picked moment.
-        val slot = data.signalSlots.lastOrNull { it <= at }
+        val slot = data.slots.lastOrNull { it <= at }
         data.signal.forEach { s ->
             val bars = slot?.let { start -> s.buckets.firstOrNull { it.start == start }?.barsAvg }
             if (bars != null) parts += res.getString(R.string.history_signal_value, sourceLabel(res, s.source, data.sims), number.format(bars))
@@ -629,28 +629,24 @@ private fun duration(res: Resources, ms: Long): String {
     }
 }
 
-/** "Today", "Yesterday", "Tue, 18 Nov", "12 – 18 Nov", "November 2026", "Dec 2025 – Nov 2026". */
+/** "Last 24 hours" and so on for the current window; earlier ones as "Wed 14:05 – Thu 14:05", "12 – 19 Nov", "Nov 2025 – Nov 2026". */
 private fun rangeLabel(context: Context, window: HistoryWindow, offset: Int): String {
-    val last = window.to - 1
-    return when (window.range) {
-        HistoryRange.DAY -> when (offset) {
-            0 -> context.getString(R.string.history_today)
-            1 -> context.getString(R.string.history_yesterday)
-            else -> DateUtils.formatDateTime(context, window.from, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_ALL)
-        }
-        HistoryRange.WEEK -> DateUtils.formatDateRange(context, window.from, last, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH)
-        HistoryRange.MONTH -> DateUtils.formatDateTime(
-            context,
-            window.from,
-            DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_NO_MONTH_DAY or DateUtils.FORMAT_SHOW_YEAR,
-        )
-        HistoryRange.YEAR -> DateUtils.formatDateRange(
-            context,
-            window.from,
-            last,
-            DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_NO_MONTH_DAY or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_ABBREV_MONTH,
+    if (offset == 0) {
+        return context.getString(
+            when (window.range) {
+                HistoryRange.DAY -> R.string.history_last_day
+                HistoryRange.WEEK -> R.string.history_last_week
+                HistoryRange.MONTH -> R.string.history_last_month
+                HistoryRange.YEAR -> R.string.history_last_year
+            },
         )
     }
+    val flags = when (window.range) {
+        HistoryRange.DAY -> DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY
+        HistoryRange.WEEK, HistoryRange.MONTH -> DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH
+        HistoryRange.YEAR -> DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_NO_MONTH_DAY or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_ABBREV_MONTH
+    }
+    return DateUtils.formatDateRange(context, window.from, window.to, flags)
 }
 
 /** A moment, as precise as the range calls for. */
@@ -658,28 +654,33 @@ private fun formatMoment(context: Context, at: Long, range: HistoryRange): Strin
     context,
     at,
     when (range) {
-        HistoryRange.DAY -> DateUtils.FORMAT_SHOW_TIME
-        HistoryRange.WEEK -> DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY
+        // A day spans two dates now, so it names the weekday too.
+        HistoryRange.DAY, HistoryRange.WEEK -> DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY
         HistoryRange.MONTH -> DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH
         HistoryRange.YEAR -> DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH
     },
 )
 
-/** Axis labels: every 6 hours for a day, each day for a week, weekly for a month, each month for a year. */
+/**
+ * Axis labels, on the clock and calendar inside the sliding window: every 6 hours for a day, each
+ * day (at noon) for a week, every 7 days back from today for a month, each month (mid-month) for a
+ * year.
+ */
 private fun ticks(window: HistoryWindow, zone: ZoneId, locale: Locale): List<Tick> {
     fun fmt(skeleton: String) = DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale)
-    val start = Instant.ofEpochMilli(window.from).atZone(zone)
-    return when (window.range) {
-        HistoryRange.DAY -> fmt("j").let { f -> (0..3).map { k -> start.plusHours(6L * k).let { Tick(it.toInstant().toEpochMilli(), f.format(it)) } } }
-        HistoryRange.WEEK -> fmt("EEE").let { f ->
-            (0..6).map { k -> start.plusDays(k.toLong()).let { Tick(it.toInstant().toEpochMilli() + HistoryMath.DAY_MS / 2, f.format(it)) } }
-        }
-        HistoryRange.MONTH -> fmt("d").let { f ->
-            listOf(0L, 7L, 14L, 21L, 28L).map { start.plusDays(it) }.filter { it.toInstant().toEpochMilli() < window.to }
-                .map { Tick(it.toInstant().toEpochMilli(), f.format(it)) }
-        }
-        HistoryRange.YEAR -> fmt("MMMMM").let { f ->
-            (0..11).map { k -> start.plusMonths(k.toLong()).let { Tick(it.toInstant().toEpochMilli() + 15 * HistoryMath.DAY_MS, f.format(it)) } }
-        }
+    fun ms(z: ZonedDateTime) = z.toInstant().toEpochMilli()
+    val from = Instant.ofEpochMilli(window.from).atZone(zone)
+    val to = Instant.ofEpochMilli(window.to).atZone(zone)
+    val (moments, format) = when (window.range) {
+        HistoryRange.DAY -> generateSequence(from.toLocalDate().atStartOfDay()) { it.plusHours(6) }.map { it.atZone(zone) } to fmt("j")
+        HistoryRange.WEEK -> generateSequence(from.toLocalDate().atTime(12, 0)) { it.plusDays(1) }.map { it.atZone(zone) } to fmt("EEE")
+        HistoryRange.MONTH -> generateSequence(to.toLocalDate()) { it.minusDays(7) }.map { it.atStartOfDay(zone) } to fmt("d")
+        HistoryRange.YEAR -> generateSequence(from.toLocalDate().withDayOfMonth(15)) { it.plusMonths(1) }.map { it.atStartOfDay(zone) } to fmt("MMMMM")
     }
+    val inside = if (window.range == HistoryRange.MONTH) {
+        moments.takeWhile { ms(it) >= window.from }.filter { ms(it) < window.to }.toList().reversed()
+    } else {
+        moments.dropWhile { ms(it) < window.from }.takeWhile { ms(it) < window.to }.toList()
+    }
+    return inside.map { Tick(ms(it), format.format(it)) }
 }

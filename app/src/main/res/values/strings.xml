@@ -212,10 +212,14 @@
     <string name="history_previous">Earlier</string>
     <!-- Accessibility label: show the period after this one. -->
     <string name="history_next">Later</string>
-    <!-- Range label on the History page for the current day. -->
-    <string name="history_today">Today</string>
-    <!-- Range label on the History page for the day before. -->
-    <string name="history_yesterday">Yesterday</string>
+    <!-- Range label on the History page for the current window: the last 24 hours up to now. -->
+    <string name="history_last_day">Last 24 hours</string>
+    <!-- Range label on the History page for the current window: the last 7 days up to now. -->
+    <string name="history_last_week">Last 7 days</string>
+    <!-- Range label on the History page for the current window: the last 30 days up to now. -->
+    <string name="history_last_month">Last 30 days</string>
+    <!-- Range label on the History page for the current window: the last 12 months (365 days) up to now. -->
+    <string name="history_last_year">Last 12 months</string>
     <!-- Card title: what carried the internet over time (Wi-Fi, a SIM…). -->
     <string name="history_internet_via">Internet via</string>
     <!-- Card title: when a VPN was on. VPN is a technical name. -->

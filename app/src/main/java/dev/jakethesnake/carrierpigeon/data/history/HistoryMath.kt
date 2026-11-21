@@ -2,8 +2,9 @@
 package dev.jakethesnake.carrierpigeon.data.history
 
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 /**
@@ -145,32 +146,22 @@ object HistoryMath {
         return (dbm == null) != (last.dbm == null)
     }
 
-    /** Summarises [points] into buckets of [bucketMs] starting at [from]. Empty buckets are left out. */
-    fun bucketize(points: List<SignalPoint>, from: Long, bucketMs: Long): List<SignalBucket> =
-        points.filter { it.at >= from }
-            .groupBy { from + (it.at - from) / bucketMs * bucketMs }
-            .map { (start, ps) ->
-                val dbms = ps.mapNotNull { it.dbm }
-                SignalBucket(
-                    start = start,
-                    samples = ps.size,
-                    barsAvg = ps.sumOf { it.bars }.toDouble() / ps.size,
-                    barsMin = ps.minOf { it.bars },
-                    barsMax = ps.maxOf { it.bars },
-                    dbmAvg = if (dbms.isEmpty()) null else dbms.sum().toDouble() / dbms.size,
-                )
-            }
-            .sortedBy { it.start }
+    /** A single reading as a one-sample bucket, so raw readings and hourly rollups go into slots alike. */
+    fun asBucket(p: SignalPoint): SignalBucket =
+        SignalBucket(p.at, 1, p.bars.toDouble(), p.bars, p.bars, p.dbm?.toDouble())
 
     /**
-     * Summarises [buckets] (for example hourly ones) into one bucket per slot, weighting each by
-     * its sample count. [slots] are the slot starts in order; the last slot runs to [end]. Each
-     * result's start is its slot's start; slots with no readings are left out.
+     * Summarises [buckets] (hourly rollups, or single readings via [asBucket]) into one bucket per
+     * slot, weighting each by its sample count. [slots] are the slot starts in order; the last slot
+     * runs to [end]. Each bucket covers [bucketMs] from its start: one that began before the first
+     * slot but runs into it counts towards the first slot. Each result's start is its slot's start;
+     * slots with no readings are left out.
      */
-    fun intoSlots(buckets: List<SignalBucket>, slots: List<Long>, end: Long): List<SignalBucket> {
+    fun intoSlots(buckets: List<SignalBucket>, slots: List<Long>, end: Long, bucketMs: Long): List<SignalBucket> {
         if (slots.isEmpty()) return emptyList()
-        return buckets.filter { it.samples > 0 && it.start >= slots.first() && it.start < end }
-            .groupBy { b -> slots.last { it <= b.start } }
+        val first = slots.first()
+        return buckets.filter { it.samples > 0 && it.start < end && (it.start >= first || it.start + bucketMs > first) }
+            .groupBy { b -> slots.lastOrNull { it <= b.start } ?: first }
             .map { (start, bs) ->
                 val n = bs.sumOf { it.samples }
                 val withDbm = bs.filter { it.dbmAvg != null }
@@ -208,52 +199,48 @@ object HistoryMath {
         return out
     }
 
+    /** How long each range's window is: the last 24 hours, 7 days, 30 days or 365 days. */
+    fun length(range: HistoryRange): Long = when (range) {
+        HistoryRange.DAY -> DAY_MS
+        HistoryRange.WEEK -> 7 * DAY_MS
+        HistoryRange.MONTH -> 30 * DAY_MS
+        HistoryRange.YEAR -> 365 * DAY_MS
+    }
+
     /**
-     * The window for [range], [offset] steps back from the one containing [now] (0 = current).
-     * Day and month are calendar ones; week is the 7 days ending today; year is the 12 calendar
-     * months ending this month.
+     * The window for [range], sliding: offset 0 ends at [now] and starts one range length before
+     * it (so a day is the last 24 hours, not since midnight). Each step of [offset] moves it back
+     * one whole length.
      */
-    fun window(range: HistoryRange, offset: Int, now: Long, zone: ZoneId): HistoryWindow {
-        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-        val (start, end) = when (range) {
-            HistoryRange.DAY -> today.minusDays(offset.toLong()).let { it to it.plusDays(1) }
-            HistoryRange.WEEK -> today.minusDays(7L * offset).let { it.minusDays(6) to it.plusDays(1) }
-            HistoryRange.MONTH -> today.withDayOfMonth(1).minusMonths(offset.toLong()).let { it to it.plusMonths(1) }
-            HistoryRange.YEAR -> today.withDayOfMonth(1).minusMonths(12L * offset).let { it.minusMonths(11) to it.plusMonths(1) }
-        }
-        return HistoryWindow(range, start.startMillis(zone), end.startMillis(zone))
-    }
-
-    /** Bar boundaries for the stacked bar chart: days for a month, months for a year. */
-    fun barStarts(window: HistoryWindow, zone: ZoneId): List<Long> {
-        val first = Instant.ofEpochMilli(window.from).atZone(zone).toLocalDate()
-        val out = mutableListOf<Long>()
-        var d = first
-        while (true) {
-            val ms = d.startMillis(zone)
-            if (ms >= window.to) break
-            out += ms
-            d = if (window.range == HistoryRange.YEAR) d.plusMonths(1) else d.plusDays(1)
-        }
-        return out
+    fun window(range: HistoryRange, offset: Int, now: Long): HistoryWindow {
+        val len = length(range)
+        val to = now - offset * len
+        return HistoryWindow(range, to - len, to)
     }
 
     /**
-     * Where each bar of the signal chart starts: every hour for a day, every 6 hours for a week,
-     * each day for a month and each month for a year. Hours are counted on the clock, so a day
-     * with a time change has 23 or 25 bars.
+     * Where each bar starts, for the signal chart and the stacked bars: every clock hour for a day,
+     * every 6 hours (midnight, 6, noon, 18) for a week, each day for a month and each month for a
+     * year. Bars sit on the clock and calendar so they don't shift as the window slides, which
+     * makes the first and last bars partial: the first starts at the window's start. Hours are real
+     * hours, so a day spanning a clock change still has 24 of them.
      */
     fun slotStarts(window: HistoryWindow, zone: ZoneId): List<Long> {
-        val hours = when (window.range) {
-            HistoryRange.DAY -> 1L
-            HistoryRange.WEEK -> 6L
-            HistoryRange.MONTH, HistoryRange.YEAR -> return barStarts(window, zone)
+        val from = Instant.ofEpochMilli(window.from).atZone(zone)
+        val boundaries: Sequence<ZonedDateTime> = when (window.range) {
+            HistoryRange.DAY -> from.truncatedTo(ChronoUnit.HOURS).let { h -> generateSequence(h) { it.plusHours(1) } }
+            HistoryRange.WEEK -> from.toLocalDate().atStartOfDay().let { d ->
+                generateSequence(d) { it.plusHours(6) }.map { it.atZone(zone) }
+            }
+            HistoryRange.MONTH -> from.toLocalDate().let { d -> generateSequence(d) { it.plusDays(1) }.map { it.atStartOfDay(zone) } }
+            HistoryRange.YEAR -> from.toLocalDate().withDayOfMonth(1).let { d ->
+                generateSequence(d) { it.plusMonths(1) }.map { it.atStartOfDay(zone) }
+            }
         }
-        val start = Instant.ofEpochMilli(window.from).atZone(zone)
-        return generateSequence(0L) { it + hours }
-            .map { start.plusHours(it).toInstant().toEpochMilli() }
+        return listOf(window.from) + boundaries.map { it.toInstant().toEpochMilli() }
+            .dropWhile { it <= window.from }
             .takeWhile { it < window.to }
-            .toList()
+            .distinct()
     }
 
     /** Whole hours and minutes in [ms], for "3 h 20 m" style totals. */
@@ -261,7 +248,4 @@ object HistoryMath {
         val minutes = (ms + MINUTE_MS / 2) / MINUTE_MS
         return minutes / 60 to minutes % 60
     }
-
-    /** Midnight, or the first moment of the day where a time change skips midnight. */
-    private fun LocalDate.startMillis(zone: ZoneId): Long = atStartOfDay(zone).toInstant().toEpochMilli()
 }

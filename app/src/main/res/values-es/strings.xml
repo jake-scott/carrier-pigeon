@@ -114,8 +114,10 @@
     <string name="history_range_year">Año</string>
     <string name="history_previous">Antes</string>
     <string name="history_next">Después</string>
-    <string name="history_today">Hoy</string>
-    <string name="history_yesterday">Ayer</string>
+    <string name="history_last_day">Últimas 24 horas</string>
+    <string name="history_last_week">Últimos 7 días</string>
+    <string name="history_last_month">Últimos 30 días</string>
+    <string name="history_last_year">Últimos 12 meses</string>
     <string name="history_internet_via">Internet por</string>
     <string name="history_vpn">VPN</string>
     <string name="history_vpn_share">Activa el %1$s del tiempo registrado</string>
