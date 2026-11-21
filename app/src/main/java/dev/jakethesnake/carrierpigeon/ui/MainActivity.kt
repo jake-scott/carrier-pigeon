@@ -256,6 +256,10 @@ private fun MainScreen(accessRequests: Int) {
                 context.startActivity(Intent(context, HistoryActivity::class.java))
             }
 
+            override fun openAbout() {
+                context.startActivity(Intent(context, AboutActivity::class.java))
+            }
+
             override fun readLog(): List<String> = log.readLines().asReversed()
 
             override fun shareLog() {

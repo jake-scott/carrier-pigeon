@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -88,6 +89,8 @@ interface HomeActions {
     fun openLanguageSettings()
     /** Opens the History page. */
     fun openHistory()
+
+    fun openAbout()
     /** Newest first. */
     fun readLog(): List<String>
     fun shareLog()
@@ -153,6 +156,11 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
                                 onClick = { menuOpen = false; actions.openLanguageSettings() },
                             )
                         }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.menu_about)) },
+                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                            onClick = { menuOpen = false; actions.openAbout() },
+                        )
                     }
                 },
             )
@@ -230,7 +238,7 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
  * stack the 108dp background and foreground and crop to the middle 72dp a launcher shows.
  */
 @Composable
-private fun AppIcon(size: Dp) {
+internal fun AppIcon(size: Dp) {
     Box(Modifier.size(size).clip(CircleShape), contentAlignment = Alignment.Center) {
         val layer = Modifier.requiredSize(size * 108f / 72f)
         Image(painterResource(R.drawable.ic_launcher_background), contentDescription = null, modifier = layer)

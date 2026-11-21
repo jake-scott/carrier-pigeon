@@ -147,4 +147,13 @@
     <string name="history_duration_minutes">%1$d min</string>
     <string name="history_duration_hours">%1$d h %2$d min</string>
     <string name="history_duration_days">%1$d d %2$d h</string>
+    <string name="menu_about">Acerca de</string>
+    <string name="about_title">Acerca de</string>
+    <string name="about_back">Atrás</string>
+    <string name="about_version">Versión %1$s</string>
+    <string name="about_version_code">Compilación %1$d</string>
+    <string name="about_privacy">Política de privacidad</string>
+    <string name="about_source">Código fuente</string>
+    <string name="about_report_problem">Informar de un problema</string>
+    <string name="about_license">Código abierto con la licencia Apache 2.0</string>
 </resources>
