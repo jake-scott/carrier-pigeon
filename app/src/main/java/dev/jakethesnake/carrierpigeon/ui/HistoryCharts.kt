@@ -15,7 +15,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -25,9 +24,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.jakethesnake.carrierpigeon.data.Signal
-import dev.jakethesnake.carrierpigeon.data.history.HistoryMath
 import dev.jakethesnake.carrierpigeon.data.history.SignalBucket
-import dev.jakethesnake.carrierpigeon.data.history.SignalPoint
 
 /** A coloured stretch of a band chart. */
 data class Band(val start: Long, val end: Long, val color: Color)
@@ -35,13 +32,8 @@ data class Band(val start: Long, val end: Long, val color: Color)
 /** One stacked bar: [segments] are fractions of the bar's time, in drawing order; the rest is unknown. */
 data class StackedBar(val start: Long, val end: Long, val segments: List<Pair<Color, Float>>)
 
-/** One signal line, from raw readings (a step line) or buckets (an average with a min–max band). */
-data class SignalLine(
-    val color: Color,
-    val points: List<SignalPoint> = emptyList(),
-    val buckets: List<SignalBucket> = emptyList(),
-    val bucketMs: Long = 0L,
-)
+/** One source's bars on the signal chart: its average signal per slot, in its colour. */
+data class SignalBars(val color: Color, val buckets: List<SignalBucket>)
 
 /** A tick on the time axis: where, and the words under it. */
 data class Tick(val at: Long, val label: String)
@@ -164,15 +156,16 @@ fun StackedBarChart(
 }
 
 /**
- * Signal in bars (0 to 4), one line per source. Raw readings draw as steps; buckets draw their
- * average with a shaded min–max band. Stretches with no readings are left as breaks.
+ * Average signal, 0 to 4 bars, as one bar per slot ([slots] are their starts; the last runs to
+ * [to]). With several sources each slot holds a bar per source, side by side. A slot with no
+ * readings has no bar.
  */
 @Composable
-fun SignalChart(
-    lines: List<SignalLine>,
+fun SignalBarChart(
+    series: List<SignalBars>,
+    slots: List<Long>,
     from: Long,
     to: Long,
-    now: Long,
     description: String,
     scrubAt: Long?,
     onScrub: (Long) -> Unit,
@@ -181,6 +174,7 @@ fun SignalChart(
 ) {
     val grid = MaterialTheme.colorScheme.outlineVariant
     val scrubColor = MaterialTheme.colorScheme.onSurface
+    val byStart = series.map { s -> s.buckets.associateBy { it.start } }
     Canvas(
         modifier
             .fillMaxWidth()
@@ -189,70 +183,29 @@ fun SignalChart(
             .scrubbable(from, to, onScrub),
     ) {
         val scale = TimeScale(from, to, size.width)
-        val pad = 3.dp.toPx()
-        val usable = size.height - 2 * pad
-        fun y(bars: Double): Float = pad + usable * (1f - (bars / Signal.MAX_BARS).toFloat())
+        val top = 2.dp.toPx()
+        val usable = size.height - top
         for (b in 0..Signal.MAX_BARS) {
-            val gy = y(b.toDouble())
+            val gy = size.height - usable * b / Signal.MAX_BARS
             drawLine(grid, Offset(0f, gy), Offset(size.width, gy), strokeWidth = 1f)
         }
-        val stroke = Stroke(width = 2.dp.toPx())
-        lines.forEach { line ->
-            if (line.points.isNotEmpty()) {
-                HistoryMath.runs(line.points).forEach { run ->
-                    val path = Path()
-                    run.forEachIndexed { i, p ->
-                        val x = scale.x(maxOf(p.at, from))
-                        if (i == 0) {
-                            path.moveTo(x, y(p.bars.toDouble()))
-                        } else {
-                            path.lineTo(x, y(run[i - 1].bars.toDouble()))
-                            path.lineTo(x, y(p.bars.toDouble()))
-                        }
-                    }
-                    // The last reading holds until the next would have been due, or now.
-                    val last = run.last()
-                    val until = minOf(last.at + HistoryMath.SIGNAL_GAP_MS, now, to)
-                    path.lineTo(scale.x(maxOf(until, last.at)), y(last.bars.toDouble()))
-                    drawPath(path, line.color, style = stroke)
-                }
-            } else if (line.buckets.isNotEmpty()) {
-                bucketRuns(line.buckets, line.bucketMs).forEach { run ->
-                    val half = line.bucketMs / 2
-                    val band = Path()
-                    run.forEachIndexed { i, b ->
-                        val x = scale.x(b.start + half)
-                        if (i == 0) band.moveTo(x, y(b.barsMax.toDouble())) else band.lineTo(x, y(b.barsMax.toDouble()))
-                    }
-                    run.asReversed().forEach { b -> band.lineTo(scale.x(b.start + half), y(b.barsMin.toDouble())) }
-                    band.close()
-                    drawPath(band, line.color.copy(alpha = 0.18f))
-                    if (run.size == 1) {
-                        val b = run.first()
-                        drawCircle(line.color, radius = 2.5.dp.toPx(), center = Offset(scale.x(b.start + half), y(b.barsAvg)))
-                    } else {
-                        val avg = Path()
-                        run.forEachIndexed { i, b ->
-                            val x = scale.x(b.start + half)
-                            if (i == 0) avg.moveTo(x, y(b.barsAvg)) else avg.lineTo(x, y(b.barsAvg))
-                        }
-                        drawPath(avg, line.color, style = stroke)
-                    }
-                }
+        val minHeight = 1.5.dp.toPx()
+        slots.forEachIndexed { i, start ->
+            val x0 = scale.x(start)
+            val slotW = scale.x(slots.getOrNull(i + 1) ?: to) - x0
+            val gap = minOf(2.dp.toPx(), slotW * 0.25f)
+            val w = (slotW - gap) / maxOf(series.size, 1)
+            // A hairline between neighbouring sources' bars in the same slot.
+            val split = if (series.size > 1) minOf(1.dp.toPx(), w * 0.3f) else 0f
+            series.forEachIndexed { k, s ->
+                val bucket = byStart[k][start] ?: return@forEachIndexed
+                // 0 bars still gets a sliver, so "no signal" differs from "not recorded".
+                val h = maxOf((bucket.barsAvg / Signal.MAX_BARS).toFloat() * usable, minHeight)
+                drawRect(s.color, Offset(x0 + gap / 2 + k * w, size.height - h), Size(maxOf(w - split, 1f), h))
             }
         }
         scrubLine(scale, scrubAt, scrubColor)
     }
-}
-
-/** Buckets in runs of neighbours; a missing bucket starts a new run. */
-private fun bucketRuns(buckets: List<SignalBucket>, bucketMs: Long): List<List<SignalBucket>> {
-    val out = mutableListOf<MutableList<SignalBucket>>()
-    buckets.sortedBy { it.start }.forEach { b ->
-        val run = out.lastOrNull()
-        if (run == null || b.start - run.last().start > bucketMs) out += mutableListOf(b) else run += b
-    }
-    return out
 }
 
 /** Labels under a chart, each centred on its tick (kept inside the edges). */

@@ -5,14 +5,13 @@ import dev.jakethesnake.carrierpigeon.data.Access
 import dev.jakethesnake.carrierpigeon.data.NetworkKind
 import dev.jakethesnake.carrierpigeon.data.history.AccessValue
 import dev.jakethesnake.carrierpigeon.data.history.HistoryMath
-import dev.jakethesnake.carrierpigeon.data.history.HistoryRange
 import dev.jakethesnake.carrierpigeon.data.history.HistoryStore
 import dev.jakethesnake.carrierpigeon.data.history.HistoryWindow
 import dev.jakethesnake.carrierpigeon.data.history.SignalBucket
-import dev.jakethesnake.carrierpigeon.data.history.SignalPoint
 import dev.jakethesnake.carrierpigeon.data.history.SignalSource
 import dev.jakethesnake.carrierpigeon.data.history.SimRecord
 import dev.jakethesnake.carrierpigeon.data.history.Span
+import java.time.ZoneId
 
 /** What carried the internet, as the History page colours it. */
 sealed interface AccessKey {
@@ -37,12 +36,11 @@ sealed interface AccessKey {
     }
 }
 
-/** One signal source's readings for the window: raw [points] for a day, [buckets] otherwise. */
+/** One signal source's average per bar of the signal chart; a bar with no readings is missing. */
 data class SignalSeries(
     val source: SignalSource,
-    val points: List<SignalPoint>,
+    /** Each bucket's start is the start of its bar in [HistoryData.signalSlots]. */
     val buckets: List<SignalBucket>,
-    val bucketMs: Long,
 )
 
 /** Everything the History page draws for one window. */
@@ -56,6 +54,8 @@ data class HistoryData(
     val network: Map<Int, List<Span<NetworkKind?>>>,
     /** Time per network type per SIM, from detail and hourly rollups together. */
     val networkTotals: Map<Int, Map<NetworkKind?, Long>>,
+    /** Where each bar of the signal chart starts; the last runs to the window's end. */
+    val signalSlots: List<Long>,
     val signal: List<SignalSeries>,
     val sims: Map<Int, SimRecord>,
     val firstRecord: Long?,
@@ -79,16 +79,13 @@ object HistoryLoader {
         store.networkHourTotals(from, to).forEach { (subId, m) ->
             m.forEach { (k, ms) -> networkTotals.getOrPut(subId) { LinkedHashMap() }.merge(k, ms) { a, b -> a + b } }
         }
-        val bucketMs = HistoryMath.bucketMs(window.range)
-        val signal = store.signalSources(from - HistoryMath.SIGNAL_GAP_MS, to).sortedBy { it.key }.map { source ->
-            val points = store.signalPoints(source, from, to)
-            if (window.range == HistoryRange.DAY) {
-                SignalSeries(source, points, emptyList(), 0L)
-            } else {
-                val hourly = store.signalHours(source, from, to) +
-                    HistoryMath.bucketize(points, from, HistoryMath.HOUR_MS)
-                SignalSeries(source, points, HistoryMath.regroup(hourly, from, bucketMs), bucketMs)
-            }
+        val slots = HistoryMath.slotStarts(window, ZoneId.systemDefault())
+        val signal = store.signalSources(from, to).sortedBy { it.key }.map { source ->
+            // Older readings are already hourly; newer ones are summarised hourly here, then
+            // both go into the chart's bars.
+            val hourly = store.signalHours(source, from, to) +
+                HistoryMath.bucketize(store.signalPoints(source, from, to), from, HistoryMath.HOUR_MS)
+            SignalSeries(source, HistoryMath.intoSlots(hourly, slots, to))
         }
         return HistoryData(
             window = window,
@@ -98,6 +95,7 @@ object HistoryLoader {
             vpn = HistoryMath.knownSpans(store.vpnPeriods(from, to), from, to, now, liveSince),
             network = network,
             networkTotals = networkTotals,
+            signalSlots = slots,
             signal = signal,
             sims = store.sims(),
             firstRecord = store.firstRecord(),
