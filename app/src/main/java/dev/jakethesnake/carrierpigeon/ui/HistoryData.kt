@@ -39,7 +39,7 @@ sealed interface AccessKey {
 /** One signal source's average per bar of the signal chart; a bar with no readings is missing. */
 data class SignalSeries(
     val source: SignalSource,
-    /** Each bucket's start is the start of its bar in [HistoryData.signalSlots]. */
+    /** Each bucket's start is the start of its bar in [HistoryData.slots]. */
     val buckets: List<SignalBucket>,
 )
 
@@ -54,8 +54,8 @@ data class HistoryData(
     val network: Map<Int, List<Span<NetworkKind?>>>,
     /** Time per network type per SIM, from detail and hourly rollups together. */
     val networkTotals: Map<Int, Map<NetworkKind?, Long>>,
-    /** Where each bar of the signal chart starts; the last runs to the window's end. */
-    val signalSlots: List<Long>,
+    /** Where each bar of the charts starts; the first is the window's start, the last runs to its end. */
+    val slots: List<Long>,
     val signal: List<SignalSeries>,
     val sims: Map<Int, SimRecord>,
     val firstRecord: Long?,
@@ -81,11 +81,11 @@ object HistoryLoader {
         }
         val slots = HistoryMath.slotStarts(window, ZoneId.systemDefault())
         val signal = store.signalSources(from, to).sortedBy { it.key }.map { source ->
-            // Older readings are already hourly; newer ones are summarised hourly here, then
-            // both go into the chart's bars.
-            val hourly = store.signalHours(source, from, to) +
-                HistoryMath.bucketize(store.signalPoints(source, from, to), from, HistoryMath.HOUR_MS)
-            SignalSeries(source, HistoryMath.intoSlots(hourly, slots, to))
+            // Older readings are already hourly (the hour the window starts in included); newer
+            // ones go into the chart's bars one by one.
+            val hourly = HistoryMath.intoSlots(store.signalHours(source, from - HistoryMath.HOUR_MS + 1, to), slots, to, HistoryMath.HOUR_MS)
+            val raw = HistoryMath.intoSlots(store.signalPoints(source, from, to).map(HistoryMath::asBucket), slots, to, 1)
+            SignalSeries(source, HistoryMath.intoSlots(hourly + raw, slots, to, 1))
         }
         return HistoryData(
             window = window,
@@ -95,7 +95,7 @@ object HistoryLoader {
             vpn = HistoryMath.knownSpans(store.vpnPeriods(from, to), from, to, now, liveSince),
             network = network,
             networkTotals = networkTotals,
-            signalSlots = slots,
+            slots = slots,
             signal = signal,
             sims = store.sims(),
             firstRecord = store.firstRecord(),
