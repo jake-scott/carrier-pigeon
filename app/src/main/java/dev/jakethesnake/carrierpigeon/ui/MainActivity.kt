@@ -36,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.updateAll
@@ -130,6 +131,8 @@ internal fun AppTheme(content: @Composable () -> Unit) {
 @Composable
 private fun MainScreen(accessRequests: Int) {
     val context = LocalContext.current
+    // Not context.resources: these follow a language change while the screen is up.
+    val res = LocalResources.current
     val app = context.applicationContext
     val scope = rememberCoroutineScope()
     val store = remember { StateStore(app) }
@@ -215,7 +218,7 @@ private fun MainScreen(accessRequests: Int) {
     // Redraw the tiles when any SIM's 5G NSA / LTE+ override changes, not only the data SIM's.
     val displayInfoVersion by DisplayInfoTracker.version.collectAsState()
     val showDetail by settings.showNetworkDetail.collectAsState(initial = false)
-    val baseTiles = remember(sims, state, displayInfoVersion) { simTiles(sims, state, resolver, context.resources) }
+    val baseTiles = remember(sims, state, displayInfoVersion, res) { simTiles(sims, state, resolver, res) }
     // Live signal bars for each tile's SIM. Listens only while the screen is showing, and again
     // whenever the set of SIMs changes.
     val signalReader = remember { CellSignalReader(app) }
@@ -265,9 +268,9 @@ private fun MainScreen(accessRequests: Int) {
             override fun shareLog() {
                 val text = log.readLines().joinToString("\n")
                 val send = Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.log_share_subject))
+                    .putExtra(Intent.EXTRA_SUBJECT, res.getString(R.string.log_share_subject))
                     .putExtra(Intent.EXTRA_TEXT, text)
-                context.startActivity(Intent.createChooser(send, context.getString(R.string.log_share_chooser)))
+                context.startActivity(Intent.createChooser(send, res.getString(R.string.log_share_chooser)))
             }
 
             override fun clearLog() = log.clear()
@@ -282,7 +285,7 @@ private fun MainScreen(accessRequests: Int) {
             notice = state?.takeIf { hasTelephony && !it.hasActiveSub }?.let { stringResource(R.string.home_no_data_sim) },
             hasTelephony = hasTelephony,
             canPickLanguage = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-            internet = state?.let { Labels.internetHeadline(context.resources, it, wifi?.ssid) },
+            internet = state?.let { Labels.internetHeadline(res, it, wifi?.ssid) },
             wifi = wifi,
             wifiCarriesInternet = state?.access == Access.WIFI,
             ssidHint = ssidHint,

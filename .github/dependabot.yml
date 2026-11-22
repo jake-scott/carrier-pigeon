@@ -18,3 +18,10 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+
+  # scripts/apksigcopier-requirements.txt (release.yml, job verify-signature).
+  - package-ecosystem: pip
+    directory: /scripts
+    target-branch: dev
+    schedule:
+      interval: weekly

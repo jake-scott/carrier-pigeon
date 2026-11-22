@@ -8,6 +8,10 @@ name: Build
 # the dev (Firebase) and release builds. Signed dev builds come from
 # release.yml.
 #
+# A v* tag makes no debug APK: a tag is a release, and the only build of it
+# should be the one release.yml makes, which isn't debuggable. Its run still
+# tests and lints the tagged commit.
+#
 # A v* tag's run finishing is also what starts a release, closed testing
 # for vX.Y.Z-rc.N and production for vX.Y.Z: release.yml, as committed on
 # main, picks it up (see that file).
@@ -41,13 +45,28 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testProdDebugUnitTest
       - name: Build debug APKs
+        if: github.ref_type != 'tag'
         run: ./gradlew --no-daemon assembleProdDebug
+      # The privacy policy says the app can't send anything: it must not hold
+      # INTERNET, whatever a library's manifest asks for (AndroidManifest.xml
+      # removes it on merge).
+      - name: No internet permission
+        if: github.ref_type != 'tag'
+        run: |
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          permissions=$("$aapt2" dump permissions app/build/outputs/apk/prod/debug/*.apk)
+          echo "$permissions"
+          if grep -q 'android.permission.INTERNET' <<<"$permissions"; then
+            echo "::error::The built APK asks for android.permission.INTERNET."
+            exit 1
+          fi
       - name: Lint
         run: ./gradlew --no-daemon lintProdDebug
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: carrier-pigeon-debug
+          # No APK on a tag (see the top of this file), only the lint report.
           path: |
             app/build/outputs/apk/prod/debug/*.apk
             app/build/reports/lint-results-prodDebug.html

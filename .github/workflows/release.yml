@@ -128,7 +128,8 @@ env:
   KMSP11_VERSION: "1.9"
   KMSP11_SHA256: 5397f965073cd5d1e2c43e5148f102f31a7c835902f97eb41c7c9c0f1b876a40
   # The APK signing library (scripts/KmsApkSigner.java), from Google's Maven
-  # repository. Matches AGP in gradle/libs.versions.toml.
+  # repository. Pinned by hash, so Dependabot can't bump it (nor KMSP11
+  # above): raise the version and hash together, by hand.
   APKSIG_VERSION: 8.11.1
   APKSIG_SHA256: c070ed1394629d74641aa0906f60b2ffa1ee77e6366a1f93437f59717b1aeb89
 
@@ -289,9 +290,18 @@ jobs:
         run: |
           set -euo pipefail
           # The rc's run names its bundle artifact after the tag. The newest
-          # one still kept, if the rc was run more than once.
-          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=bundle-closed-$RC_TAG&per_page=20" \
-            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
+          # one still kept, if the rc was run more than once. Any run can
+          # upload an artifact under any name, a pull request's Build run
+          # included, so only runs of this repository on main count (an rc
+          # is a workflow_run or a "Run workflow" on main). Without that, a
+          # stray artifact of the same name would be picked, fail the
+          # provenance check below and block the release.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=bundle-closed-$RC_TAG&per_page=100" \
+            --jq '[.artifacts[]
+                   | select(.expired == false
+                            and .workflow_run.head_branch == "main"
+                            and .workflow_run.head_repository_id == .workflow_run.repository_id)]
+                  | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
           if [ -z "$id" ]; then
             echo "::error title=No bundle::No run of $RC_TAG kept its bundle (bundle-closed-$RC_TAG). Release within the artifact retention of the rc, or tag a new rc."
             exit 1
@@ -416,6 +426,37 @@ jobs:
             prod)     cp app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk out/ ;;
           esac
           sha256sum out/*
+
+      # Before anything is signed: a debuggable app lets anyone with adb
+      # read its data, and an rc's bundle is what production gets. Release
+      # builds aren't debuggable (app/build.gradle.kts); this checks the
+      # file itself.
+      - name: The build is not debuggable
+        run: |
+          shopt -s nullglob
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          checked=0
+          for f in out/*.apk; do
+            if "$aapt2" dump badging "$f" | grep -q '^application-debuggable'; then
+              echo "::error::$f is debuggable. Not signing it."
+              exit 1
+            fi
+            checked=$((checked + 1))
+          done
+          # A bundle's manifest is protobuf, which aapt2 can't dump from an
+          # .aab. The attribute's name is in it only when the build is
+          # debuggable.
+          for f in out/*.aab; do
+            unzip -p "$f" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/manifest.pb"
+            test -s "$RUNNER_TEMP/manifest.pb"
+            if grep -aq debuggable "$RUNNER_TEMP/manifest.pb"; then
+              echo "::error::$f is debuggable. Not signing it."
+              exit 1
+            fi
+            checked=$((checked + 1))
+          done
+          [ "$checked" -eq 1 ] || { echo "::error::Expected one build in out/, checked $checked."; exit 1; }
+          echo "Not debuggable."
 
       - name: Version
         id: version
@@ -574,10 +615,12 @@ jobs:
       # kms_sign.sh checks the APK verifies and carries this certificate.
       - name: Sign the APK
         if: steps.configured.outputs.ok == 'true'
+        env:
+          FIRST: ${{ steps.first.outputs.first }}
         run: |
           mkdir -p signed
           scripts/kms_sign.sh apk out/app-dev-release-unsigned.apk "signed/$APK_NAME" "$CERT"
-          [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
+          [ -z "$FIRST" ] || cp "$CERT" signed/
 
       # A new certificate is kept even if signing fails, so the next run
       # doesn't make a different one.
@@ -805,12 +848,14 @@ jobs:
           scripts/kms_sign.sh cert "$CERT" "Carrier Pigeon (Play upload)"
       - name: Sign the bundle
         if: steps.configured.outputs.ok == 'true'
+        env:
+          FIRST: ${{ steps.first.outputs.first }}
         run: |
           mkdir -p signed
           cp out/app-*-release.aab "$AAB"
           scripts/kms_sign.sh aab "$AAB" "$CERT"
           sha256sum "$AAB"
-          [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
+          [ -z "$FIRST" ] || cp "$CERT" signed/
       # Records, signed by GitHub, that this file on main built this bundle,
       # under its name. The release tag checks it before promoting an rc's.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -1059,11 +1104,13 @@ jobs:
       - name: Sign the APK
         id: sign
         if: steps.configured.outputs.ok == 'true'
+        env:
+          FIRST: ${{ steps.first.outputs.first }}
         run: |
           mkdir -p signed
           scripts/kms_sign.sh apk out/app-prod-release-unsigned.apk "signed/$APK_NAME" "$CERT"
           echo "sha256=$(sha256sum "signed/$APK_NAME" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          [ -z "${{ steps.first.outputs.first }}" ] || cp "$CERT" signed/
+          [ -z "$FIRST" ] || cp "$CERT" signed/
       - name: Keep a new certificate
         if: always() && steps.first.outputs.first
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
