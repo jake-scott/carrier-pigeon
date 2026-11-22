@@ -114,8 +114,10 @@
     <string name="history_range_year">Año</string>
     <string name="history_previous">Antes</string>
     <string name="history_next">Después</string>
-    <string name="history_today">Hoy</string>
-    <string name="history_yesterday">Ayer</string>
+    <string name="history_last_day">Últimas 24 horas</string>
+    <string name="history_last_week">Últimos 7 días</string>
+    <string name="history_last_month">Últimos 30 días</string>
+    <string name="history_last_year">Últimos 12 meses</string>
     <string name="history_internet_via">Internet por</string>
     <string name="history_vpn">VPN</string>
     <string name="history_vpn_share">Activa el %1$s del tiempo registrado</string>
@@ -145,4 +147,13 @@
     <string name="history_duration_minutes">%1$d min</string>
     <string name="history_duration_hours">%1$d h %2$d min</string>
     <string name="history_duration_days">%1$d d %2$d h</string>
+    <string name="menu_about">Acerca de</string>
+    <string name="about_title">Acerca de</string>
+    <string name="about_back">Atrás</string>
+    <string name="about_version">Versión %1$s</string>
+    <string name="about_version_code">Compilación %1$d</string>
+    <string name="about_privacy">Política de privacidad</string>
+    <string name="about_source">Código fuente</string>
+    <string name="about_report_problem">Informar de un problema</string>
+    <string name="about_license">Código abierto con la licencia Apache 2.0</string>
 </resources>

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package dev.jakethesnake.carrierpigeon.data.history
 
+import dev.jakethesnake.carrierpigeon.data.history.HistoryMath.DAY_MS
 import dev.jakethesnake.carrierpigeon.data.history.HistoryMath.GAP_TOLERANCE_MS
 import dev.jakethesnake.carrierpigeon.data.history.HistoryMath.HOUR_MS
 import dev.jakethesnake.carrierpigeon.data.history.HistoryMath.MINUTE_MS
@@ -9,7 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 
@@ -99,19 +100,6 @@ class HistoryMathTest {
     // ---- buckets and runs ----
 
     @Test
-    fun bucketizeSummarisesEachBucket() {
-        val points = listOf(
-            SignalPoint(t0, 1, -110),
-            SignalPoint(t0 + 10 * MINUTE_MS, 3, null),
-            SignalPoint(t0 + HOUR_MS + MINUTE_MS, 4, -80),
-        )
-        val buckets = HistoryMath.bucketize(points, t0, HOUR_MS)
-        assertEquals(2, buckets.size)
-        assertEquals(SignalBucket(t0, 2, 2.0, 1, 3, -110.0), buckets[0])
-        assertEquals(SignalBucket(t0 + HOUR_MS, 1, 4.0, 4, 4, -80.0), buckets[1])
-    }
-
-    @Test
     fun intoSlotsWeightsBySampleCountAndKeysBySlotStart() {
         val hours = listOf(
             SignalBucket(t0, 3, 1.0, 0, 2, -110.0),
@@ -121,14 +109,28 @@ class HistoryMathTest {
         val slots = listOf(t0, t0 + 6 * HOUR_MS)
         assertEquals(
             listOf(SignalBucket(t0, 4, 1.75, 0, 4, -110.0), SignalBucket(t0 + 6 * HOUR_MS, 2, 3.0, 3, 3, -90.0)),
-            HistoryMath.intoSlots(hours, slots, t0 + 12 * HOUR_MS),
+            HistoryMath.intoSlots(hours, slots, t0 + 12 * HOUR_MS, HOUR_MS),
         )
     }
 
     @Test
     fun intoSlotsDropsReadingsOutsideTheWindow() {
         val hours = listOf(SignalBucket(t0 - HOUR_MS, 1, 2.0, 2, 2, null), SignalBucket(t0 + 2 * HOUR_MS, 1, 2.0, 2, 2, null))
-        assertEquals(emptyList<SignalBucket>(), HistoryMath.intoSlots(hours, listOf(t0), t0 + HOUR_MS))
+        assertEquals(emptyList<SignalBucket>(), HistoryMath.intoSlots(hours, listOf(t0), t0 + HOUR_MS, HOUR_MS))
+    }
+
+    @Test
+    fun anHourRunningIntoTheWindowCountsTowardsTheFirstSlot() {
+        val start = t0 + 20 * MINUTE_MS
+        val hours = listOf(SignalBucket(t0, 2, 3.0, 3, 3, null))
+        assertEquals(listOf(SignalBucket(start, 2, 3.0, 3, 3, null)), HistoryMath.intoSlots(hours, listOf(start, t0 + HOUR_MS), t0 + 2 * HOUR_MS, HOUR_MS))
+    }
+
+    @Test
+    fun singleReadingsGoIntoTheirSlot() {
+        val points = listOf(SignalPoint(t0 - MINUTE_MS, 0, null), SignalPoint(t0, 1, -110), SignalPoint(t0 + 10 * MINUTE_MS, 3, null), SignalPoint(t0 + HOUR_MS + MINUTE_MS, 4, -80))
+        val slots = HistoryMath.intoSlots(points.map(HistoryMath::asBucket), listOf(t0, t0 + HOUR_MS), t0 + 2 * HOUR_MS, 1)
+        assertEquals(listOf(SignalBucket(t0, 2, 2.0, 1, 3, -110.0), SignalBucket(t0 + HOUR_MS, 1, 4.0, 4, 4, -80.0)), slots)
     }
 
     @Test
@@ -139,49 +141,61 @@ class HistoryMathTest {
 
     // ---- windows ----
 
-    private fun ms(date: String, zone: ZoneId) = LocalDate.parse(date).atStartOfDay(zone).toInstant().toEpochMilli()
+    @Test
+    fun windowsSlideBackFromNow() {
+        val now = t0 + 37 * MINUTE_MS
+        assertEquals(HistoryWindow(HistoryRange.DAY, now - DAY_MS, now), HistoryMath.window(HistoryRange.DAY, 0, now))
+        assertEquals(HistoryWindow(HistoryRange.DAY, now - 2 * DAY_MS, now - DAY_MS), HistoryMath.window(HistoryRange.DAY, 1, now))
+        assertEquals(HistoryWindow(HistoryRange.WEEK, now - 7 * DAY_MS, now), HistoryMath.window(HistoryRange.WEEK, 0, now))
+        assertEquals(HistoryWindow(HistoryRange.MONTH, now - 60 * DAY_MS, now - 30 * DAY_MS), HistoryMath.window(HistoryRange.MONTH, 1, now))
+        assertEquals(HistoryWindow(HistoryRange.YEAR, now - 365 * DAY_MS, now), HistoryMath.window(HistoryRange.YEAR, 0, now))
+    }
+
+    private fun at(dateTime: String, zone: ZoneId) = LocalDateTime.parse(dateTime).atZone(zone).toInstant().toEpochMilli()
 
     @Test
-    fun windowsForEachRange() {
+    fun aDaysSlotsAreClockHoursWithAPartialFirstOne() {
         val utc = ZoneOffset.UTC
-        val now = ms("2026-11-20", utc) + 15 * HOUR_MS
-        assertEquals(HistoryWindow(HistoryRange.DAY, ms("2026-11-20", utc), ms("2026-11-21", utc)), HistoryMath.window(HistoryRange.DAY, 0, now, utc))
-        assertEquals(HistoryWindow(HistoryRange.DAY, ms("2026-11-19", utc), ms("2026-11-20", utc)), HistoryMath.window(HistoryRange.DAY, 1, now, utc))
-        assertEquals(HistoryWindow(HistoryRange.WEEK, ms("2026-11-14", utc), ms("2026-11-21", utc)), HistoryMath.window(HistoryRange.WEEK, 0, now, utc))
-        assertEquals(HistoryWindow(HistoryRange.MONTH, ms("2026-10-01", utc), ms("2026-11-01", utc)), HistoryMath.window(HistoryRange.MONTH, 1, now, utc))
-        assertEquals(HistoryWindow(HistoryRange.YEAR, ms("2025-12-01", utc), ms("2026-12-01", utc)), HistoryMath.window(HistoryRange.YEAR, 0, now, utc))
+        val window = HistoryMath.window(HistoryRange.DAY, 0, at("2026-11-20T15:20", utc))
+        val slots = HistoryMath.slotStarts(window, utc)
+        assertEquals(25, slots.size)
+        assertEquals(at("2026-11-19T15:20", utc), slots.first())
+        assertEquals(at("2026-11-19T16:00", utc), slots[1])
+        assertEquals(at("2026-11-20T15:00", utc), slots.last())
     }
 
     @Test
-    fun aDayWithAClockChangeIsTwentyFiveHours() {
+    fun aWindowOnTheHourHasNoPartialSlot() {
+        val utc = ZoneOffset.UTC
+        val slots = HistoryMath.slotStarts(HistoryMath.window(HistoryRange.DAY, 0, at("2026-11-20T15:00", utc)), utc)
+        assertEquals(24, slots.size)
+        assertEquals(at("2026-11-19T15:00", utc), slots.first())
+    }
+
+    @Test
+    fun slotsPerRange() {
+        val utc = ZoneOffset.UTC
+        val now = at("2026-11-20T15:20", utc)
+        val week = HistoryMath.slotStarts(HistoryMath.window(HistoryRange.WEEK, 0, now), utc)
+        assertEquals(29, week.size)
+        assertEquals(at("2026-11-13T18:00", utc), week[1])
+        val month = HistoryMath.slotStarts(HistoryMath.window(HistoryRange.MONTH, 0, now), utc)
+        assertEquals(31, month.size)
+        assertEquals(at("2026-10-22T00:00", utc), month[1])
+        assertEquals(at("2026-11-20T00:00", utc), month.last())
+        val year = HistoryMath.slotStarts(HistoryMath.window(HistoryRange.YEAR, 0, now), utc)
+        assertEquals(13, year.size)
+        assertEquals(at("2025-11-20T15:20", utc), year.first())
+        assertEquals(at("2025-12-01T00:00", utc), year[1])
+        assertEquals(at("2026-11-01T00:00", utc), year.last())
+    }
+
+    @Test
+    fun aDaySpanningAClockChangeHasTwentyFourRealHours() {
         val london = ZoneId.of("Europe/London")
-        val now = ms("2026-10-25", london) + 12 * HOUR_MS
-        assertEquals(25 * HOUR_MS, HistoryMath.window(HistoryRange.DAY, 0, now, london).length)
-    }
-
-    @Test
-    fun barsAreDaysForAMonthAndMonthsForAYear() {
-        val utc = ZoneOffset.UTC
-        val now = ms("2026-11-20", utc)
-        val month = HistoryMath.window(HistoryRange.MONTH, 0, now, utc)
-        assertEquals(30, HistoryMath.barStarts(month, utc).size)
-        val year = HistoryMath.window(HistoryRange.YEAR, 0, now, utc)
-        val bars = HistoryMath.barStarts(year, utc)
-        assertEquals(12, bars.size)
-        assertEquals(ms("2026-11-01", utc), bars.last())
-    }
-
-    @Test
-    fun signalSlotsPerRange() {
-        val utc = ZoneOffset.UTC
-        val now = ms("2026-11-20", utc)
-        assertEquals(24, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.DAY, 0, now, utc), utc).size)
-        assertEquals(28, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.WEEK, 0, now, utc), utc).size)
-        assertEquals(30, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.MONTH, 0, now, utc), utc).size)
-        assertEquals(12, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.YEAR, 0, now, utc), utc).size)
-        val london = ZoneId.of("Europe/London")
-        val clockChange = ms("2026-10-25", london) + 12 * HOUR_MS
-        assertEquals(25, HistoryMath.slotStarts(HistoryMath.window(HistoryRange.DAY, 0, clockChange, london), london).size)
+        val slots = HistoryMath.slotStarts(HistoryMath.window(HistoryRange.DAY, 0, at("2026-10-25T12:00", london)), london)
+        assertEquals(24, slots.size)
+        assertEquals(slots.zipWithNext { a, b -> b - a }.toSet(), setOf(HOUR_MS))
     }
 
     @Test

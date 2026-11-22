@@ -212,10 +212,14 @@
     <string name="history_previous">Earlier</string>
     <!-- Accessibility label: show the period after this one. -->
     <string name="history_next">Later</string>
-    <!-- Range label on the History page for the current day. -->
-    <string name="history_today">Today</string>
-    <!-- Range label on the History page for the day before. -->
-    <string name="history_yesterday">Yesterday</string>
+    <!-- Range label on the History page for the current window: the last 24 hours up to now. -->
+    <string name="history_last_day">Last 24 hours</string>
+    <!-- Range label on the History page for the current window: the last 7 days up to now. -->
+    <string name="history_last_week">Last 7 days</string>
+    <!-- Range label on the History page for the current window: the last 30 days up to now. -->
+    <string name="history_last_month">Last 30 days</string>
+    <!-- Range label on the History page for the current window: the last 12 months (365 days) up to now. -->
+    <string name="history_last_year">Last 12 months</string>
     <!-- Card title: what carried the internet over time (Wi-Fi, a SIM…). -->
     <string name="history_internet_via">Internet via</string>
     <!-- Card title: when a VPN was on. VPN is a technical name. -->
@@ -274,4 +278,24 @@
     <string name="history_duration_hours">%1$d h %2$d min</string>
     <!-- A length of time. %1$d is days, %2$d hours. -->
     <string name="history_duration_days">%1$d d %2$d h</string>
+
+    <!-- About page. -->
+    <!-- Menu item: open the About page (app name, version and links). -->
+    <string name="menu_about">About</string>
+    <!-- Title of the About page. -->
+    <string name="about_title">About</string>
+    <!-- Accessibility label for the back arrow on the About page. -->
+    <string name="about_back">Back</string>
+    <!-- Under the app name on the About page. %1$s is the version name, e.g. "0.1.0" or "0.1.0-dev.15+11a78e2". -->
+    <string name="about_version">Version %1$s</string>
+    <!-- Smaller line under the version. %1$d is the internal build number Android and Google Play use, e.g. "42". -->
+    <string name="about_version_code">Build %1$d</string>
+    <!-- Link on the About page: opens the privacy policy in the browser. -->
+    <string name="about_privacy">Privacy policy</string>
+    <!-- Link on the About page: opens the app's source code on GitHub. -->
+    <string name="about_source">Source code</string>
+    <!-- Link on the About page: opens the project's issue tracker to report a bug. -->
+    <string name="about_report_problem">Report a problem</string>
+    <!-- Small link at the bottom of the About page: opens the license text. Apache is a name. -->
+    <string name="about_license">Open source under the Apache License 2.0</string>
 </resources>
