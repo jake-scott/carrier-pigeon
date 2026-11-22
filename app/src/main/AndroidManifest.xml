@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- SIM display name, carrier and network type. The active data sub id itself needs no permission. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
@@ -13,6 +14,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Re-register the network callback after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+        Never INTERNET. The app doesn't ask for it, and this stops a library's manifest from adding
+        it when manifests are merged: the privacy policy (docs/privacy.md) relies on the app having
+        no way to send anything. build.yml checks the built APK too.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 
     <!--
         All optional, so Play offers the app to every device. READ_PHONE_STATE, ACCESS_WIFI_STATE and

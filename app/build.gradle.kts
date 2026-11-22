@@ -5,7 +5,11 @@ plugins {
 
 android {
     namespace = "dev.jakethesnake.carrierpigeon"
-    compileSdk = 36
+    // 37.1: the lowest the androidx libraries accept (Compose 1.13 asks for it). Only the APIs
+    // the app compiles against; targetSdk below decides how Android treats it at run time.
+    compileSdk {
+        version = release(37) { minorApiLevel = 1 }
+    }
 
     defaultConfig {
         applicationId = "dev.jakethesnake.carrierpigeon"
@@ -63,6 +67,10 @@ android {
             isPseudoLocalesEnabled = true
         }
         release {
+            // Everything that is signed and shipped (dev, Play, GitHub, F-Droid) is a release
+            // build. Never debuggable: a debuggable app lets anyone with adb read its data.
+            // release.yml checks the built file as well, before it signs anything.
+            isDebuggable = false
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Release builds are left unsigned here. CI signs them with keys in

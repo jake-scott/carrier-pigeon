@@ -60,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
@@ -346,7 +347,7 @@ private fun Note(text: String) {
 
 @Composable
 private fun InternetCard(data: HistoryData, colors: HistoryColors, ticks: List<Tick>, scrubAt: Long?, onScrub: (Long) -> Unit) {
-    val res = LocalContext.current.resources
+    val res = LocalResources.current
     val window = data.window
     val totals = HistoryMath.totals(data.access).entries.sortedByDescending { it.value }
     val order = totals.map { it.key }
@@ -381,7 +382,7 @@ private fun InternetCard(data: HistoryData, colors: HistoryColors, ticks: List<T
 
 @Composable
 private fun VpnCard(data: HistoryData, colors: HistoryColors, ticks: List<Tick>, scrubAt: Long?, onScrub: (Long) -> Unit) {
-    val res = LocalContext.current.resources
+    val res = LocalResources.current
     val window = data.window
     val totals = HistoryMath.totals(data.vpn)
     val known = totals.values.sum()
@@ -406,7 +407,7 @@ private fun VpnCard(data: HistoryData, colors: HistoryColors, ticks: List<Tick>,
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SignalCard(data: HistoryData, colors: HistoryColors, ticks: List<Tick>, scrubAt: Long?, onScrub: (Long) -> Unit) {
-    val res = LocalContext.current.resources
+    val res = LocalResources.current
     val window = data.window
     var hidden by remember { mutableStateOf(emptySet<String>()) }
     ChartCard(stringResource(R.string.history_signal), trailing = stringResource(R.string.history_signal_hint)) {
@@ -446,7 +447,7 @@ private fun SignalCard(data: HistoryData, colors: HistoryColors, ticks: List<Tic
 
 @Composable
 private fun NetworkCard(data: HistoryData) {
-    val res = LocalContext.current.resources
+    val res = LocalResources.current
     val rows = data.networkTotals.filterValues { m -> m.values.sum() > 0 }
     if (rows.isEmpty()) return
     ChartCard(stringResource(R.string.history_network)) {
@@ -466,7 +467,7 @@ private fun NetworkCard(data: HistoryData) {
 @Composable
 private fun Readout(data: HistoryData, at: Long?) {
     val context = LocalContext.current
-    val res = context.resources
+    val res = LocalResources.current
     val text = if (at == null) {
         stringResource(R.string.history_readout_hint)
     } else {

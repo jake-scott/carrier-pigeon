@@ -8,7 +8,7 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import dev.jakethesnake.carrierpigeon.ui.Glossary.Segment
 
 /** Text made of segments, some of them tappable terms. Drawn by [TermText]. */
@@ -41,7 +41,7 @@ fun Resources.richString(@StringRes id: Int, vararg args: RichArg, emphasizeArgs
 @Composable
 fun richStringResource(@StringRes id: Int, vararg args: RichArg, emphasizeArgs: Boolean = false): RichText {
     val configuration = LocalConfiguration.current
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     return remember(configuration, id, *args, emphasizeArgs) { resources.richString(id, *args, emphasizeArgs = emphasizeArgs) }
 }
 
