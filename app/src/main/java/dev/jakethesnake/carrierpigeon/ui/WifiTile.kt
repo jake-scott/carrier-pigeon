@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -159,7 +159,7 @@ fun WifiTile(
                 }
                 wifi.band?.let {
                     Text(
-                        Labels.band(LocalContext.current.resources, it),
+                        Labels.band(LocalResources.current, it),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 2.dp),
@@ -169,7 +169,7 @@ fun WifiTile(
                 SignalBars(wifi.signal, Modifier.padding(bottom = 4.dp))
             }
             wifi.security?.let {
-                val security = Labels.security(LocalContext.current.resources, it)
+                val security = Labels.security(LocalResources.current, it)
                 TermText(
                     richStringResource(R.string.wifi_security, RichArg.Rich(security), emphasizeArgs = true),
                     onTerm,

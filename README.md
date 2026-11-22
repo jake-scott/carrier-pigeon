@@ -44,7 +44,7 @@ Every path ends in `DataSimRefresher`, which reads `SubscriptionManager.getActiv
 - **Google Play.** Internal testers get each build from `main` as "Carrier Pigeon Internal" (`dev.jakethesnake.carrierpigeon.internal`), a separate Play app that installs beside the closed-testing or production one. Each `vX.Y.Z-rc.N` tag builds the tagged commit as version X.Y.Z for closed testers, and production gets that same build when the commit is tagged `vX.Y.Z`.
 - **Dev builds (Firebase App Distribution).** Each push to `dev` goes to the App Distribution tester group as "Carrier Pigeon Dev" (`dev.jakethesnake.carrierpigeon.dev`). It installs beside the Play build, so you can run both.
 - **GitHub releases.** Each `vX.Y.Z` tag publishes a signed APK on the releases page, and F-Droid builds it from the same tag.
-- **Debug APK.** Every GitHub Actions run of `build.yml` attaches a debug build (artifact `carrier-pigeon-debug`, "Carrier Pigeon Debug"), signed with the throwaway debug key.
+- **Debug APK.** Every GitHub Actions run of `build.yml` attaches a debug build (artifact `carrier-pigeon-debug`, "Carrier Pigeon Debug"), signed with the throwaway debug key. Runs for `v*` tags attach none: a tag is a release, and its only build is the non-debuggable one `release.yml` makes.
 
 On first launch, allow phone access so the app can read your SIM names and network types. Carrier Pigeon never makes or manages calls, even though Android's prompt mentions them. Location access is optional and only shows the Wi-Fi name. Then add the "Data SIM" widget from your home screen's widget picker.
 
@@ -54,7 +54,7 @@ Open the menu and tap **Share log**. Lines marked `SWITCH` are data SIM switches
 
 ## Building
 
-Requires JDK 17 or later (CI uses 21) and the Android SDK (compileSdk 36).
+Requires JDK 17 or later (CI uses 21) and the Android SDK (compileSdk 37.1).
 
 - `./gradlew assembleProdDebug` builds a debug APK ("Carrier Pigeon Debug", `dev.jakethesnake.carrierpigeon.debug`), which installs beside any other build.
 - `./gradlew testProdDebugUnitTest lintProdDebug` runs the unit tests and lint, as CI does.

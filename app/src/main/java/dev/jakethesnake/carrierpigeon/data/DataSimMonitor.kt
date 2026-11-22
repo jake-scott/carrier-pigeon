@@ -211,7 +211,12 @@ object DataSimMonitor {
         if (runtimeReceiver != null) return
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                val reason = if (intent.action == AIRPLANE_ACTION) "airplane-mode" else "default-data-broadcast"
+                // Exported, so that system broadcasts reach it: take nothing but the actions asked for.
+                val reason = when (intent.action) {
+                    AIRPLANE_ACTION -> "airplane-mode"
+                    in DEFAULT_DATA_ACTIONS -> "default-data-broadcast"
+                    else -> return
+                }
                 scope.launch { DataSimRefresher.refresh(app, reason) }
             }
         }
