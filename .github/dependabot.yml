@@ -18,6 +18,11 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    # One PR for every Gradle bump (plugins, libraries and the wrapper), so
+    # gradle/verification-metadata.xml is regenerated once per batch.
+    groups:
+      gradle:
+        patterns: ["*"]
 
   # scripts/apksigcopier-requirements.txt (release.yml, job verify-signature).
   - package-ecosystem: pip
@@ -25,3 +30,6 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    groups:
+      pip:
+        patterns: ["*"]

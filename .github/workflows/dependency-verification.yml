@@ -1,0 +1,234 @@
+name: Dependency verification
+
+# Regenerates gradle/verification-metadata.xml and the PGP keyring
+# (gradle/verification-keyring.keys) from a clean Gradle home, so nothing is
+# missed because a local cache already had it.
+#
+# Run it from the Actions tab (Run workflow, pick the branch) after a
+# dependency update, then download the "dependency-verification" artifact,
+# copy its two files into gradle/, review the diff and commit them with the
+# update. It also runs on a pull request that changes this file, as a test.
+#
+# combine-dependabot.yml starts it on its scratch branch with commit_to set:
+# then the commit job commits the result to deps/dependabot-combined and
+# opens or updates that pull request. That job holds a token that can push
+# but runs nothing from the branch; the jobs that run Gradle have none. Running
+# on the scratch branch, not the default branch, also keeps anything the
+# branch's code does to the Actions cache away from main's builds.
+#
+# Artifacts signed by their publisher (most of Maven Central) are trusted by
+# PGP key, so a new version from the same publisher needs no new entry.
+# Unsigned ones (most of Google's Maven repo) fall back to SHA-256 checksums.
+#
+# It runs on Linux first (CI's platform, every build task CI and release.yml
+# run), then on macOS for the platform-specific artifacts a Mac build pulls
+# (aapt2), merging into the Linux result.
+
+on:
+  workflow_dispatch:
+    inputs:
+      fresh:
+        description: Start from an empty file, dropping entries nothing uses any more
+        type: boolean
+        default: true
+      commit_to:
+        description: >-
+          Commit the result and push it here (combine-dependabot.yml only;
+          leave empty to just upload the artifact)
+        type: string
+        default: ""
+      combine_run:
+        description: Run of combine-dependabot.yml whose pull request description to use
+        type: string
+        default: ""
+  pull_request:
+    paths:
+      - .github/workflows/dependency-verification.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: versionName counts commits (app/build.gradle.kts).
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: true
+
+      - name: Start from an empty file
+        # A pull request run has no inputs; treat it as fresh.
+        if: github.event_name != 'workflow_dispatch' || inputs.fresh
+        run: |
+          rm -f gradle/verification-keyring.keys gradle/verification-keyring.gpg
+          cat > gradle/verification-metadata.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <verification-metadata xmlns="https://schema.gradle.org/dependency-verification" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schema.gradle.org/dependency-verification https://schema.gradle.org/dependency-verification/dependency-verification-1.4.xsd">
+             <configuration>
+                <verify-metadata>true</verify-metadata>
+                <verify-signatures>true</verify-signatures>
+                <keyring-format>armored</keyring-format>
+             </configuration>
+             <components/>
+          </verification-metadata>
+          EOF
+
+      # Key servers stay on while writing, so Gradle can fetch publishers'
+      # keys; the last step turns them off for normal builds, which then use
+      # only the committed keyring.
+      - name: Allow key servers while writing
+        run: sed -i '/<key-servers enabled="false"\/>/d' gradle/verification-metadata.xml
+
+      # Every task build.yml and release.yml run. Release builds are unsigned
+      # here (signing happens later, in Cloud KMS), so they need no secrets.
+      - name: Write verification metadata
+        run: >-
+          ./gradlew --no-daemon --no-build-cache
+          --write-verification-metadata pgp,sha256 --export-keys
+          testProdDebugUnitTest assembleProdDebug lintProdDebug
+          assembleDevRelease bundleInternalRelease bundleProdRelease assembleProdRelease
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-verification-linux
+          path: |
+            gradle/verification-metadata.xml
+            gradle/verification-keyring.keys
+          if-no-files-found: error
+
+  macos:
+    needs: linux
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dependency-verification-linux
+          path: gradle
+
+      # Writing merges into the Linux file: only what's new on macOS is added.
+      - name: Write verification metadata
+        run: >-
+          ./gradlew --no-daemon --no-build-cache
+          --write-verification-metadata pgp,sha256 --export-keys
+          assembleProdDebug lintProdDebug
+
+      - name: Turn key servers off for normal builds
+        run: |
+          rm -f gradle/verification-keyring.gpg
+          if ! grep -q '<key-servers enabled="false"/>' gradle/verification-metadata.xml; then
+            perl -0pi -e 's|(\s*)</configuration>|$1   <key-servers enabled="false"/>$1</configuration>|' gradle/verification-metadata.xml
+          fi
+          grep -q '<key-servers enabled="false"/>' gradle/verification-metadata.xml
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-verification
+          path: |
+            gradle/verification-metadata.xml
+            gradle/verification-keyring.keys
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "### Dependency verification"
+            echo
+            echo "Download the **dependency-verification** artifact, copy both files into \`gradle/\`, review and commit."
+            echo
+            echo '```'
+            git diff --stat -- gradle/ || true
+            echo "Trusted keys: $(grep -c '<trusted-key ' gradle/verification-metadata.xml || true)"
+            echo "Checksum-only components: $(grep -c '<component ' gradle/verification-metadata.xml || true)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Only when combine-dependabot.yml asks. It pushes with a token, so it runs
+  # no code from the branch: git and gh only.
+  commit:
+    needs: macos
+    if: github.event_name == 'workflow_dispatch' && inputs.commit_to != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      COMMIT_TO: ${{ inputs.commit_to }}
+      COMBINE_RUN: ${{ inputs.combine_run }}
+    steps:
+      - name: Check the target
+        run: |
+          if [ "$COMMIT_TO" != deps/dependabot-combined ]; then
+            echo "::error::commit_to can only be deps/dependabot-combined."
+            exit 1
+          fi
+          if [ -z "$COMBINE_RUN" ]; then
+            echo "::error::combine_run is needed with commit_to."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          token: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dependency-verification
+          path: ${{ runner.temp }}/verification
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$RUNNER_TEMP/verification/verification-metadata.xml" \
+             "$RUNNER_TEMP/verification/verification-keyring.keys" gradle/
+          git add gradle/verification-metadata.xml gradle/verification-keyring.keys
+          if git diff --cached --quiet; then
+            echo "Verification metadata unchanged."
+          else
+            git commit -m "Regenerate dependency verification metadata"
+          fi
+          # The branch is the workflow's own, rebuilt from dev every run.
+          git push --force origin "HEAD:refs/heads/$COMMIT_TO"
+          # The scratch branch this run started on.
+          if [ "$GITHUB_REF_NAME" != "$COMMIT_TO" ]; then
+            git push origin --delete "$GITHUB_REF_NAME" || true
+          fi
+
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+        run: |
+          gh run download "$COMBINE_RUN" --name combine-body --dir "$RUNNER_TEMP/combine"
+          body="$RUNNER_TEMP/combine/body.md"
+          number=$(gh pr list --base dev --head "$COMMIT_TO" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --body-file "$body"
+          else
+            gh pr create --base dev --head "$COMMIT_TO" \
+              --title "Combined Dependabot updates" --body-file "$body"
+          fi
