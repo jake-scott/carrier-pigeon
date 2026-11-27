@@ -5,7 +5,8 @@ name: Dependency verification
 # missed because a local cache already had it.
 #
 # Run it from the Actions tab (Run workflow, pick the branch) after a
-# dependency update. If the metadata changed, its commit job commits the two
+# dependency update, or run scripts/update_dependency_verification.sh
+# locally, which this workflow uses too. If the metadata changed, its commit job commits the two
 # files to deps/verification-metadata/<branch> and opens (or updates) a pull
 # request into the branch you ran it on; review the diff there and merge.
 # Untick "open a pull request" to only get the "dependency-verification"
@@ -25,6 +26,13 @@ name: Dependency verification
 # Artifacts signed by their publisher (most of Maven Central) are trusted by
 # PGP key, so a new version from the same publisher needs no new entry.
 # Unsigned ones (most of Google's Maven repo) fall back to SHA-256 checksums.
+#
+# The metadata lists two key servers (set by
+# scripts/update_dependency_verification.sh; Gradle keeps them when it
+# rewrites). Writing fetches publishers' keys from them and
+# exports them to gradle/verification-keyring.keys; builds look in that
+# keyring first and only ask a server for a key it lacks. The check steps turn
+# the servers off to prove the keyring is complete.
 #
 # It runs on Linux first (CI's platform, every build task CI and release.yml
 # run), then on macOS for the platform-specific artifacts a Mac build pulls
@@ -79,50 +87,15 @@ jobs:
         with:
           cache-disabled: true
 
-      - name: Start from an empty file
-        # A pull request run has no inputs; treat it as fresh.
-        if: github.event_name != 'workflow_dispatch' || inputs.fresh
-        run: |
-          rm -f gradle/verification-keyring.keys gradle/verification-keyring.gpg
-          cat > gradle/verification-metadata.xml <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <verification-metadata xmlns="https://schema.gradle.org/dependency-verification" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schema.gradle.org/dependency-verification https://schema.gradle.org/dependency-verification/dependency-verification-1.4.xsd">
-             <configuration>
-                <verify-metadata>true</verify-metadata>
-                <verify-signatures>true</verify-signatures>
-                <keyring-format>armored</keyring-format>
-             </configuration>
-             <components/>
-          </verification-metadata>
-          EOF
-
-      # Key servers stay on while writing, so Gradle can fetch publishers'
-      # keys; the last step turns them off for normal builds, which then use
-      # only the committed keyring.
-      - name: Allow key servers while writing
-        run: sed -i '/<key-servers enabled="false"\/>/d' gradle/verification-metadata.xml
-
-      # Every task build.yml and release.yml run. Release builds are unsigned
-      # here (signing happens later, in Cloud KMS), so they need no secrets.
+      # scripts/update_dependency_verification.sh does the work (two write
+      # passes; see there for why). Every task build.yml and release.yml
+      # run; release builds are unsigned here (signing happens later, in
+      # Cloud KMS), so they need no secrets. The check runs in the check job.
       - name: Write verification metadata
-        run: >-
-          ./gradlew --no-daemon --no-build-cache
-          --write-verification-metadata pgp,sha256 --export-keys
-          testProdDebugUnitTest assembleProdDebug lintProdDebug
-          assembleDevRelease bundleInternalRelease bundleProdRelease assembleProdRelease
-
-      # From an empty Gradle home the first pass leaves out some parent and
-      # BOM poms (bc-jdk18on-bom, guava-parent, httpcomponents-parent...):
-      # it takes the signature it found on Maven Central, but a normal build
-      # looks for the signature in the Google repository the pom is credited
-      # to, finds none, and fails for want of a checksum. A second pass, with
-      # everything already downloaded, writes those checksums.
-      - name: Write verification metadata, second pass
-        run: >-
-          ./gradlew --no-daemon --no-build-cache
-          --write-verification-metadata pgp,sha256 --export-keys
-          testProdDebugUnitTest assembleProdDebug lintProdDebug
-          assembleDevRelease bundleInternalRelease bundleProdRelease assembleProdRelease
+        env:
+          # A pull request run has no inputs; treat it as fresh.
+          FRESH: ${{ (github.event_name != 'workflow_dispatch' || inputs.fresh) && '--fresh' || '' }}
+        run: scripts/update_dependency_verification.sh --no-check $FRESH
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -153,33 +126,12 @@ jobs:
           path: gradle
 
       # Writing merges into the Linux file: only what's new on macOS is added.
-      - name: Write verification metadata
-        run: >-
-          ./gradlew --no-daemon --no-build-cache
-          --write-verification-metadata pgp,sha256 --export-keys
-          assembleProdDebug lintProdDebug
-
-      # As on Linux: the second pass fills what the first left out.
-      - name: Write verification metadata, second pass
-        run: >-
-          ./gradlew --no-daemon --no-build-cache
-          --write-verification-metadata pgp,sha256 --export-keys
-          assembleProdDebug lintProdDebug
-
-      - name: Turn key servers off for normal builds
-        run: |
-          rm -f gradle/verification-keyring.gpg
-          if ! grep -q '<key-servers enabled="false"/>' gradle/verification-metadata.xml; then
-            perl -0pi -e 's|(\s*)</configuration>|$1   <key-servers enabled="false"/>$1</configuration>|' gradle/verification-metadata.xml
-          fi
-          grep -q '<key-servers enabled="false"/>' gradle/verification-metadata.xml
-
-      # A Mac build that verifies against the result, from an empty Gradle
-      # home with key servers off. The check job does the same on Linux.
-      - name: Check a build verifies
+      # Then a Mac build from an empty Gradle home with the key servers off,
+      # which also proves the keyring holds every key.
+      - name: Write and check verification metadata
         env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-check
-        run: ./gradlew --no-daemon --no-build-cache assembleProdDebug lintProdDebug
+          TASKS: assembleProdDebug lintProdDebug
+        run: scripts/update_dependency_verification.sh
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -204,8 +156,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Every task build.yml and release.yml run, verifying against the final
-  # files from an empty Gradle home with key servers off, as those builds
-  # will, so a gap fails here rather than on the pull request.
+  # files from an empty Gradle home, so a gap fails here rather than on the
+  # pull request. Key servers are off for it, which proves the committed
+  # keyring is complete: real builds have the servers only as a fallback.
   check:
     needs: macos
     runs-on: ubuntu-latest
@@ -225,11 +178,8 @@ jobs:
         with:
           name: dependency-verification
           path: gradle
-      - name: Build, verifying dependencies
-        run: >-
-          ./gradlew --no-daemon --no-build-cache
-          testProdDebugUnitTest assembleProdDebug lintProdDebug
-          assembleDevRelease bundleInternalRelease bundleProdRelease assembleProdRelease
+      - name: Build, verifying dependencies, key servers off
+        run: scripts/update_dependency_verification.sh --check-only
 
   # A manual run (or combine-dependabot.yml's). It pushes with a token, so it
   # runs no code from the branch: git and gh only.
