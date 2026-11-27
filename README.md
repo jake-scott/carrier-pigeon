@@ -60,7 +60,7 @@ Requires JDK 17 or later (CI uses 21) and the Android SDK (compileSdk 37.1).
 - `./gradlew testProdDebugUnitTest lintProdDebug` runs the unit tests and lint, as CI does.
 - `scripts/check_hardcoded_strings.sh` fails if UI code has an English string that isn't in `res/values`. Translations are in `res/values-fr` and `res/values-es`.
 
-Gradle verifies every downloaded plugin, dependency and metadata file against the SHA-256 values in `gradle/verification-metadata.xml`. After an intentional dependency update, regenerate the affected entries by running the relevant build with `--write-verification-metadata sha256`, review every changed checksum against a trusted source, and commit the metadata change with the dependency update.
+Gradle verifies every downloaded plugin, dependency and metadata file: by its publisher's PGP signature where it has one (keys in `gradle/verification-keyring.keys`), otherwise by the SHA-256 value in `gradle/verification-metadata.xml`. After a dependency update, run the **Dependency verification** workflow on your branch (Actions tab, Run workflow). It regenerates both files from a clean Gradle home on Linux and macOS; download its artifact, copy the two files into `gradle/`, review the diff and commit it with the update.
 
 Release builds are signed in CI with keys in Cloud KMS and are reproducible for F-Droid. See [docs/signing.md](docs/signing.md).
 
