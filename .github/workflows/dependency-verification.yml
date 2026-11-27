@@ -9,6 +9,13 @@ name: Dependency verification
 # copy its two files into gradle/, review the diff and commit them with the
 # update. It also runs on a pull request that changes this file, as a test.
 #
+# combine-dependabot.yml starts it on its scratch branch with commit_to set:
+# then the commit job commits the result to deps/dependabot-combined and
+# opens or updates that pull request. That job holds a token that can push
+# but runs nothing from the branch; the jobs that run Gradle have none. Running
+# on the scratch branch, not the default branch, also keeps anything the
+# branch's code does to the Actions cache away from main's builds.
+#
 # Artifacts signed by their publisher (most of Maven Central) are trusted by
 # PGP key, so a new version from the same publisher needs no new entry.
 # Unsigned ones (most of Google's Maven repo) fall back to SHA-256 checksums.
@@ -24,6 +31,16 @@ on:
         description: Start from an empty file, dropping entries nothing uses any more
         type: boolean
         default: true
+      commit_to:
+        description: >-
+          Commit the result and push it here (combine-dependabot.yml only;
+          leave empty to just upload the artifact)
+        type: string
+        default: ""
+      combine_run:
+        description: Run of combine-dependabot.yml whose pull request description to use
+        type: string
+        default: ""
   pull_request:
     paths:
       - .github/workflows/dependency-verification.yml
@@ -148,3 +165,70 @@ jobs:
             echo "Checksum-only components: $(grep -c '<component ' gradle/verification-metadata.xml || true)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Only when combine-dependabot.yml asks. It pushes with a token, so it runs
+  # no code from the branch: git and gh only.
+  commit:
+    needs: macos
+    if: github.event_name == 'workflow_dispatch' && inputs.commit_to != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      COMMIT_TO: ${{ inputs.commit_to }}
+      COMBINE_RUN: ${{ inputs.combine_run }}
+    steps:
+      - name: Check the target
+        run: |
+          if [ "$COMMIT_TO" != deps/dependabot-combined ]; then
+            echo "::error::commit_to can only be deps/dependabot-combined."
+            exit 1
+          fi
+          if [ -z "$COMBINE_RUN" ]; then
+            echo "::error::combine_run is needed with commit_to."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          token: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dependency-verification
+          path: ${{ runner.temp }}/verification
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$RUNNER_TEMP/verification/verification-metadata.xml" \
+             "$RUNNER_TEMP/verification/verification-keyring.keys" gradle/
+          git add gradle/verification-metadata.xml gradle/verification-keyring.keys
+          if git diff --cached --quiet; then
+            echo "Verification metadata unchanged."
+          else
+            git commit -m "Regenerate dependency verification metadata"
+          fi
+          # The branch is the workflow's own, rebuilt from dev every run.
+          git push --force origin "HEAD:refs/heads/$COMMIT_TO"
+          # The scratch branch this run started on.
+          if [ "$GITHUB_REF_NAME" != "$COMMIT_TO" ]; then
+            git push origin --delete "$GITHUB_REF_NAME" || true
+          fi
+
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+        run: |
+          gh run download "$COMBINE_RUN" --name combine-body --dir "$RUNNER_TEMP/combine"
+          body="$RUNNER_TEMP/combine/body.md"
+          number=$(gh pr list --base dev --head "$COMMIT_TO" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --body-file "$body"
+          else
+            gh pr create --base dev --head "$COMMIT_TO" \
+              --title "Combined Dependabot updates" --body-file "$body"
+          fi
