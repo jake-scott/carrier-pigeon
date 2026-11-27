@@ -37,7 +37,7 @@ class SwitchLog(context: Context) {
 
     // The log is a diagnostic shared in bug reports, so it stays in English whatever the app's language.
     private fun SimLabel.forLog(): String = when (this) {
-        is SimLabel.Named -> name
+        is SimLabel.Named -> name.escapeLogValue()
         is SimLabel.Slot -> "SIM $number"
         is SimLabel.SubId -> "SIM #$id"
         SimLabel.NoDataSim -> "No data SIM"
@@ -46,7 +46,7 @@ class SwitchLog(context: Context) {
     /** A diagnostic line (registration results, process starts) so the spike log explains gaps. */
     fun note(text: String) {
         val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-        write("$time   NOTE $text")
+        write("$time   NOTE ${text.escapeLogValue()}")
     }
 
     @Synchronized
@@ -65,5 +65,23 @@ class SwitchLog(context: Context) {
 
     private companion object {
         const val MAX_LINES = 500
+    }
+}
+
+/** Keeps platform-provided labels and exception messages inside one unambiguous log line. */
+internal fun String.escapeLogValue(): String = buildString(length) {
+    for (character in this@escapeLogValue) {
+        when (character) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            else -> if (character.isISOControl()) {
+                append("\\u")
+                append(character.code.toString(16).padStart(4, '0'))
+            } else {
+                append(character)
+            }
+        }
     }
 }
