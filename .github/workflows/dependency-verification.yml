@@ -8,6 +8,8 @@ name: Dependency verification
 # dependency update, then download the "dependency-verification" artifact,
 # copy its two files into gradle/, review the diff and commit them with the
 # update. It also runs on a pull request that changes this file, as a test.
+# combine-dependabot.yml calls it on the combined branch and commits the
+# result itself.
 #
 # Artifacts signed by their publisher (most of Maven Central) are trusted by
 # PGP key, so a new version from the same publisher needs no new entry.
@@ -24,6 +26,15 @@ on:
         description: Start from an empty file, dropping entries nothing uses any more
         type: boolean
         default: true
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit or branch to write the metadata for
+        type: string
+        required: true
+      fresh:
+        type: boolean
+        default: true
   pull_request:
     paths:
       - .github/workflows/dependency-verification.yml
@@ -32,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: dependency-verification-${{ github.ref }}
+  group: dependency-verification-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,6 +55,8 @@ jobs:
           # Full history: versionName counts commits (app/build.gradle.kts).
           fetch-depth: 0
           persist-credentials: false
+          # Empty (the run's own ref) unless called with one.
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
@@ -100,6 +113,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          # Empty (the run's own ref) unless called with one.
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin

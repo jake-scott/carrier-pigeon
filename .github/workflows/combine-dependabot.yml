@@ -1,0 +1,168 @@
+name: Combine Dependabot
+
+# Puts every open Dependabot pull request against dev into one branch,
+# deps/dependabot-combined, with the dependency verification metadata
+# regenerated for it, and opens (or updates) one pull request for it. So a
+# week of bumps costs one CI run and one metadata review, not one each.
+#
+# Runs weekly, the day after Dependabot's Monday run, and from the Actions tab
+# (Run workflow). Each run rebuilds the branch from dev, so it always holds
+# exactly the pull requests open at the time. scripts/combine_dependabot.sh
+# does the merging; it says what happens when two pull requests conflict.
+#
+# Needs the repository secret COMBINE_DEPENDABOT_TOKEN: a fine-grained
+# personal access token for this repository only, with Contents, Pull
+# requests and Workflows read and write. GITHUB_TOKEN won't do: it can't push
+# a change to .github/workflows (the actions bumps), and a pull request it
+# opens or pushes to doesn't start build.yml.
+#
+# The token stays out of the job that runs Gradle on the combined code: that
+# is dependency-verification.yml, called with read-only permissions. The
+# other jobs use git and gh only. The combined code waits on a scratch branch
+# (ci/dependabot-combine-wip, no pull request, so no CI) until its metadata
+# is ready, then goes to deps/dependabot-combined in one push.
+
+on:
+  schedule:
+    - cron: "17 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: combine-dependabot
+  cancel-in-progress: false
+
+env:
+  BASE: dev
+  BRANCH: deps/dependabot-combined
+  WIP: ci/dependabot-combine-wip
+
+jobs:
+  combine:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      count: ${{ steps.combine.outputs.count }}
+      gradle: ${{ steps.combine.outputs.gradle }}
+      sha: ${{ steps.combine.outputs.sha }}
+    steps:
+      - name: Check the token is set
+        env:
+          TOKEN: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Set the COMBINE_DEPENDABOT_TOKEN secret (see the top of combine-dependabot.yml)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BASE }}
+          fetch-depth: 0
+          token: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+
+      - name: Merge the Dependabot pull requests
+        id: combine
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_DIR: ${{ runner.temp }}/combine
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Run the script as committed on dev, not as a Dependabot branch
+          # might change it.
+          cp scripts/combine_dependabot.sh "$RUNNER_TEMP/combine_dependabot.sh"
+          bash "$RUNNER_TEMP/combine_dependabot.sh"
+          count=$(wc -l < "$OUT_DIR/included" | tr -d ' ')
+          {
+            echo "count=$count"
+            echo "gradle=$(cat "$OUT_DIR/gradle")"
+            echo "sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+          cat "$OUT_DIR/body.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push to the scratch branch
+        if: steps.combine.outputs.count != '0'
+        run: git push --force origin "HEAD:refs/heads/$WIP"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.combine.outputs.count != '0'
+        with:
+          name: combine-body
+          path: ${{ runner.temp }}/combine/body.md
+          if-no-files-found: error
+
+  verify:
+    needs: combine
+    if: needs.combine.outputs.count != '0' && needs.combine.outputs.gradle == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/dependency-verification.yml
+    with:
+      ref: ${{ needs.combine.outputs.sha }}
+      fresh: true
+
+  publish:
+    needs: [combine, verify]
+    # verify is skipped when no Gradle file changed.
+    if: >-
+      always() && needs.combine.result == 'success' &&
+      needs.combine.outputs.count != '0' &&
+      (needs.verify.result == 'success' || needs.verify.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.combine.outputs.sha }}
+          fetch-depth: 1
+          token: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: combine-body
+          path: ${{ runner.temp }}/combine
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.verify.result == 'success'
+        with:
+          name: dependency-verification
+          path: ${{ runner.temp }}/verification
+
+      - name: Commit the verification metadata
+        if: needs.verify.result == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$RUNNER_TEMP/verification/verification-metadata.xml" \
+             "$RUNNER_TEMP/verification/verification-keyring.keys" gradle/
+          git add gradle/verification-metadata.xml gradle/verification-keyring.keys
+          if git diff --cached --quiet; then
+            echo "Verification metadata unchanged."
+          else
+            git commit -m "Regenerate dependency verification metadata"
+          fi
+
+      - name: Push the combined branch
+        run: |
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+          git push origin --delete "$WIP" || true
+
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ secrets.COMBINE_DEPENDABOT_TOKEN }}
+          BODY: ${{ runner.temp }}/combine/body.md
+        run: |
+          number=$(gh pr list --base "$BASE" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --body-file "$BODY"
+            echo "Updated #$number" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --base "$BASE" --head "$BRANCH" \
+              --title "Combined Dependabot updates" --body-file "$BODY"
+          fi
