@@ -81,8 +81,8 @@ if $write; then
       <verify-signatures>true</verify-signatures>
       <keyring-format>armored</keyring-format>
       <key-servers>
-         <key-server uri="hkps://keyserver.ubuntu.com"/>
-         <key-server uri="hkps://keys.openpgp.org"/>
+         <key-server uri="https://keyserver.ubuntu.com"/>
+         <key-server uri="https://keys.openpgp.org"/>
       </key-servers>
    </configuration>
    <components/>
@@ -100,7 +100,7 @@ EOF
   perl -0pi -e '
     s{[ \t]*<key-servers\b[^>]*/>[ \t]*\n}{}g;
     s{[ \t]*<key-servers\b.*?</key-servers>[ \t]*\n}{}gs;
-    s{(\n([ \t]*)<keyring-format>[^<]*</keyring-format>)}{$1\n$2<key-servers>\n$2   <key-server uri="hkps://keyserver.ubuntu.com"/>\n$2   <key-server uri="hkps://keys.openpgp.org"/>\n$2</key-servers>} or die "no keyring-format element in the metadata\n";
+    s{(\n([ \t]*)<keyring-format>[^<]*</keyring-format>)}{$1\n$2<key-servers>\n$2   <key-server uri="https://keyserver.ubuntu.com"/>\n$2   <key-server uri="https://keys.openpgp.org"/>\n$2</key-servers>} or die "no keyring-format element in the metadata\n";
   ' "$metadata"
 
   echo "== Writing verification metadata (first pass)"
@@ -110,6 +110,21 @@ EOF
   # Gradle writes a binary copy of the keyring too; only the armored one is
   # committed.
   rm -f gradle/verification-keyring.gpg
+
+  # Gradle doesn't fail when it can't download a signing key: it marks the
+  # key ignored and quietly trusts that artifact by checksum instead. When
+  # the key servers can't be reached that happens to every key, and the
+  # result is checksum-only metadata and no keyring. Refuse that.
+  if grep -Fq "reason=\"Key couldn't be downloaded from any key server\"" "$metadata"; then
+    echo "Some signing keys couldn't be downloaded from the key servers (see the ignored-key entries in $metadata)." >&2
+    echo "Check the servers are reachable and run again; not committing a checksum fallback." >&2
+    exit 1
+  fi
+  if [ "$(grep -c '<trusted-key ' "$metadata" || true)" -eq 0 ] ||
+     ! grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$keyring" 2>/dev/null; then
+    echo "No trusted keys, or no keyring, came out of this run." >&2
+    exit 1
+  fi
 fi
 
 if $check; then
