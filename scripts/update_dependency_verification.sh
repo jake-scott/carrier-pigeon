@@ -95,10 +95,13 @@ EOF
     echo "Run with --fresh (on Linux), or use the Dependency verification workflow, once to switch it over." >&2
     exit 1
   fi
-  # An older file may not list the key servers yet.
-  if ! grep -q '<key-servers' "$metadata"; then
-    perl -0pi -e 's{(\n([ \t]*)<keyring-format>[^<]*</keyring-format>)}{$1\n$2<key-servers>\n$2   <key-server uri="hkps://keyserver.ubuntu.com"/>\n$2   <key-server uri="hkps://keys.openpgp.org"/>\n$2</key-servers>}' "$metadata"
-  fi
+  # List the key servers, whatever the file had (none in an older file, or
+  # enabled="false" from before they were used).
+  perl -0pi -e '
+    s{[ \t]*<key-servers\b[^>]*/>[ \t]*\n}{}g;
+    s{[ \t]*<key-servers\b.*?</key-servers>[ \t]*\n}{}gs;
+    s{(\n([ \t]*)<keyring-format>[^<]*</keyring-format>)}{$1\n$2<key-servers>\n$2   <key-server uri="hkps://keyserver.ubuntu.com"/>\n$2   <key-server uri="hkps://keys.openpgp.org"/>\n$2</key-servers>} or die "no keyring-format element in the metadata\n";
+  ' "$metadata"
 
   echo "== Writing verification metadata (first pass)"
   gradle "$work/home" --write-verification-metadata pgp,sha256 --export-keys "${tasks[@]}"
